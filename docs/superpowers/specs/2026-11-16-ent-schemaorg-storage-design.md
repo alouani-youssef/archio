@@ -2,14 +2,14 @@
 
 ## Intent
 
-Add modular application startup and Ent-based PostgreSQL persistence for Archio's core bucket/object records, with schema.org identifiers for interoperable types and properties, plus separate entities for semantic and exact search. Expose a readiness endpoint that checks the Ent/PostgreSQL connection.
+Add modular application startup and managed PostgreSQL, Redis, and RabbitMQ connections. Add Ent-based PostgreSQL persistence for Archio's core bucket/object records, with schema.org identifiers for interoperable types and properties, plus separate entities for semantic and exact search. Expose a readiness endpoint that checks all configured infrastructure connections.
 
 ## Goals
 
 - Configure Ent to connect to the existing PostgreSQL configuration.
 - Keep process startup, infrastructure lifecycle, feature modules, and HTTP transport separated by responsibility.
-- Open and close the Ent client through one lifecycle owner, with context-aware ping/readiness support.
-- Expose `/health` as a readiness endpoint that returns success only when PostgreSQL is reachable.
+- Open and close the Ent/PostgreSQL, Redis, and RabbitMQ clients through one application lifecycle owner, with context-aware readiness support.
+- Expose `/health` as a readiness endpoint that returns success only when PostgreSQL, Redis, and RabbitMQ are reachable.
 - Define core Bucket, Object, and MetaData entities and their relationships.
 - Use schema.org IRIs for object types and metadata property identifiers, with JSONB for flexible property values.
 - Define separate search entities related to Object: semantic chunks with embeddings and exact-search field/value records.
@@ -49,7 +49,9 @@ This approach is proposed because the repository already separates bucket module
 - The exact Ent-compatible vector field/type and migration/index representation must be chosen against the Ent and pgvector Go APIs available at implementation time; generated code must not be hand-edited.
 - Database migration should create the `vector` extension before the vector column/index is applied.
 - Application startup should fail clearly if PostgreSQL connection or schema setup fails, and close the Ent client on shutdown.
+- Application startup should fail clearly if any configured infrastructure connection fails, and close already-opened connections on failure or shutdown.
 - The health endpoint should return HTTP 503 when PostgreSQL is not ready and should not expose connection strings or credentials.
+- The health endpoint should report a generic unavailable state for each failed dependency without exposing raw connection errors.
 
 ## Open implementation decisions
 

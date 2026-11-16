@@ -38,10 +38,16 @@ The Compose stack provides PostgreSQL with the `vector` extension enabled, Redis
 Copy `.env.example` to `.env` to use the matching local connection settings, then start the server during local development:
 
 ```bash
-go run cmd/api/main.go
+go run ./cmd/api
 ```
 
-If your `.env` specifies `RUN_MODE=development`, a `statsviz` visualization dashboard will become available.
+At startup, Archio opens PostgreSQL, enables pgvector if needed, and applies the Ent schema. `/health` is a readiness check: it returns HTTP 200 when PostgreSQL is reachable and HTTP 503 otherwise. If `.env` specifies `RUN_MODE=development`, a `statsviz` visualization dashboard is available.
+
+After changing an Ent schema, regenerate the client and migration definitions:
+
+```bash
+go generate ./internal/ent
+```
 
 Stop the dependencies with `docker compose down`. To remove their persisted data as well, run `docker compose down -v`.
 
@@ -53,7 +59,7 @@ Stop the dependencies with `docker compose down`. To remove their persisted data
 To compile the application into a standalone executeable binary:
 
 ```bash
-go build -o archio-api cmd/api/main.go
+go build -o archio-api ./cmd/api
 ```
 
 Run the binary:

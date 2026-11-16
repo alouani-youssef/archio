@@ -2,13 +2,11 @@ package server
 
 import "net/http"
 
-func NewMux() *http.ServeMux {
+// NewMux mounts feature module handlers on the HTTP transport.
+func NewMux(healthHandler http.Handler) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", health)
+	if healthHandler != nil {
+		mux.Handle("GET /health", healthHandler)
+	}
 	return mux
-}
-
-func health(w http.ResponseWriter, _ *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
 }
