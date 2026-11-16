@@ -27,13 +27,23 @@ go mod download
 
 ## Running Locally
 
-To start the server during local development:
+Start the local dependencies with Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+The Compose stack provides PostgreSQL with the `vector` extension enabled, Redis, and RabbitMQ. PostgreSQL data, Redis data, and RabbitMQ data persist in named Docker volumes. RabbitMQ's management UI is available at `http://127.0.0.1:15672`.
+
+Copy `.env.example` to `.env` to use the matching local connection settings, then start the server during local development:
 
 ```bash
 go run cmd/api/main.go
 ```
 
 If your `.env` specifies `RUN_MODE=development`, a `statsviz` visualization dashboard will become available.
+
+Stop the dependencies with `docker compose down`. To remove their persisted data as well, run `docker compose down -v`.
 
 - **Health Check endpoints**: `http://127.0.0.1:3000/health`
 - **Metrics Dashboard**: `http://127.0.0.1:3000/debug/statsviz/`
