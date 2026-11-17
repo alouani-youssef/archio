@@ -1,6 +1,7 @@
 package objects
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"archio/internal/ent/group"
 	"archio/internal/ent/object"
 	"archio/internal/ent/objectversion"
+	"archio/internal/storage"
 	apperr "archio/pkg/errors"
 	"github.com/google/uuid"
 )
@@ -43,6 +45,14 @@ func (c *controller) read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	file, err := c.svc.storage.Open(ctx, v.StorageKey)
+	if errors.Is(err, storage.ErrNotFound) {
+		// The blob is gone: either the object was just deleted (404) or the
+		// file was lost (opaque 500).
+		if exists, qerr := c.svc.repo.client.ObjectVersion.Query().Where(objectversion.ID(id)).Exist(ctx); qerr == nil && !exists {
+			apperr.Write(w, errVersionNotFound)
+			return
+		}
+	}
 	if err != nil {
 		apperr.Write(w, err)
 		return
@@ -55,6 +65,7 @@ func (c *controller) read(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Type", v.ContentType)
 	h.Set("ETag", `"`+v.ChecksumSha256+`"`)
 	h.Set("X-Checksum-Sha256", v.ChecksumSha256)
+	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Cache-Control", "private, max-age=31536000, immutable")
 	http.ServeContent(w, r, "", v.CreatedAt, file)
 }

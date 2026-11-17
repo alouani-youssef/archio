@@ -2,6 +2,8 @@ package objects
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"archio/internal/ent/objectversion"
+	"archio/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -19,11 +23,12 @@ func (e *env) read(method, versionID string, header http.Header) *httptest.Respo
 func assertReadHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	want := map[string]string{
-		"Content-Type":      "text/plain",
-		"Content-Length":    "5",
-		"Etag":              `"` + helloSHA + `"`,
-		"X-Checksum-Sha256": helloSHA,
-		"Cache-Control":     "private, max-age=31536000, immutable",
+		"Content-Type":           "text/plain",
+		"Content-Length":         "5",
+		"Etag":                   `"` + helloSHA + `"`,
+		"X-Checksum-Sha256":      helloSHA,
+		"Cache-Control":          "private, max-age=31536000, immutable",
+		"X-Content-Type-Options": "nosniff",
 	}
 	for k, v := range want {
 		if got := rec.Header().Get(k); got != v {
@@ -121,5 +126,33 @@ func TestRead_MissingFileIs500(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "blob not found") {
 		t.Fatalf("error not logged: %q", buf.String())
+	}
+}
+
+// vanishingStorage deletes the version row when its blob is opened, then
+// reports the blob as missing: a concurrent object delete.
+type vanishingStorage struct {
+	storage.Storage
+	e **env
+}
+
+func (s vanishingStorage) Open(ctx context.Context, key string) (io.ReadSeekCloser, error) {
+	id := uuid.MustParse(key[strings.LastIndex(key, "/")+1:])
+	if err := (*s.e).client.ObjectVersion.DeleteOneID(id).Exec(context.Background()); err != nil {
+		return nil, err
+	}
+	return nil, storage.ErrNotFound
+}
+
+func TestRead_ConcurrentlyDeletedIs404(t *testing.T) {
+	var e *env
+	e = setup(t, func(d *Deps) { d.Storage = vanishingStorage{Storage: d.Storage, e: &e} })
+	v := mustPut(t, e, "hello.txt", "hello", "text/plain")
+	rec := e.read("GET", v.VersionID, nil)
+	if rec.Code != 404 || errCode(t, rec) != "version_not_found" {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+	if n, _ := e.client.ObjectVersion.Query().Where(objectversion.ID(uuid.MustParse(v.VersionID))).Count(context.Background()); n != 0 {
+		t.Fatalf("row still present")
 	}
 }

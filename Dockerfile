@@ -26,7 +26,7 @@ WORKDIR /app
 COPY --from=builder /app/archio-api .
 
 # Object storage volume mount point
-RUN mkdir -p /data/objects && chmod 0777 /data/objects
+RUN mkdir -p /data/objects && chmod 0750 /data/objects
 
 # Expose the application port
 EXPOSE 3000
