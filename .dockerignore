@@ -1,3 +1,7 @@
 .env
+.git
+.superpowers
+data
 archio
+archio-api
 Dockerfile

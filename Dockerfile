@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o archio-api ./cmd/api/main.go
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.22
 
 # Set working directory for the final container
 WORKDIR /app
