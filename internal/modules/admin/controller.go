@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"archio/internal/ent"
@@ -20,9 +21,13 @@ func toKey(k *ent.ApiKey) keyResponse {
 		CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt, RevokedAt: k.RevokedAt}
 }
 
-func decodeName(r *http.Request) (string, error) {
+func decodeName(w http.ResponseWriter, r *http.Request) (string, error) {
 	var req createRequest
-	if err := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return "", apperr.New(http.StatusRequestEntityTooLarge, "payload_too_large", "request body too large")
+		}
 		return "", apperr.New(http.StatusBadRequest, "invalid_request", "invalid JSON body")
 	}
 	return req.Name, nil
@@ -39,7 +44,7 @@ func pathUUID(r *http.Request, name string, notFound *apperr.Error) (uuid.UUID, 
 }
 
 func (c *controller) createGroup(w http.ResponseWriter, r *http.Request) {
-	name, err := decodeName(r)
+	name, err := decodeName(w, r)
 	if err != nil {
 		apperr.Write(w, err)
 		return
@@ -62,7 +67,7 @@ func (c *controller) listGroups(w http.ResponseWriter, r *http.Request) {
 	for _, g := range groups {
 		out = append(out, toGroup(g))
 	}
-	apperr.WriteJSON(w, http.StatusOK, out)
+	apperr.WriteJSON(w, http.StatusOK, map[string]any{"groups": out})
 }
 
 func (c *controller) deleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +88,7 @@ func (c *controller) createKey(w http.ResponseWriter, r *http.Request) {
 		apperr.Write(w, err)
 		return
 	}
-	name, err := decodeName(r)
+	name, err := decodeName(w, r)
 	if err != nil {
 		apperr.Write(w, err)
 		return
@@ -111,7 +116,7 @@ func (c *controller) listKeys(w http.ResponseWriter, r *http.Request) {
 	for _, k := range keys {
 		out = append(out, toKey(k))
 	}
-	apperr.WriteJSON(w, http.StatusOK, out)
+	apperr.WriteJSON(w, http.StatusOK, map[string]any{"keys": out})
 }
 
 func (c *controller) revokeKey(w http.ResponseWriter, r *http.Request) {

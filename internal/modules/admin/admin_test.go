@@ -88,10 +88,28 @@ func TestAdmin_GroupAndKeyLifecycle(t *testing.T) {
 	if strings.Contains(raw, key) || strings.Contains(strings.ToLower(raw), "hash") || strings.Contains(raw, `"key"`) {
 		t.Fatalf("list leaks secret material: %s", raw)
 	}
-	var list []map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	var wrapped struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &wrapped)
+	list := wrapped.Keys
 	if len(list) != 1 || list[0]["prefix"] != key[:11] {
 		t.Fatalf("unexpected list: %s", raw)
+	}
+
+	rec = do(h, "GET", "/v1/admin/groups", nil)
+	var groups struct {
+		Groups []map[string]any `json:"groups"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &groups); rec.Code != 200 || err != nil {
+		t.Fatalf("list groups: %d %s", rec.Code, rec.Body)
+	}
+	found := false
+	for _, g := range groups.Groups {
+		found = found || g["id"] == gid
+	}
+	if !found {
+		t.Fatalf("group %s missing from %s", gid, rec.Body)
 	}
 
 	a := NewKeyAuthenticator(client)
@@ -176,5 +194,15 @@ func TestAdmin_UnknownGroup(t *testing.T) {
 				t.Fatalf("%s %s: %d %s", c.method, c.path, rec.Code, rec.Body)
 			}
 		}
+	}
+}
+
+func TestAdmin_OversizedBodyIs413(t *testing.T) {
+	_, h := setup(t)
+	body := `{"name":"` + strings.Repeat("a", 2<<20) + `"}`
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/admin/groups", strings.NewReader(body)))
+	if rec.Code != 413 || errCode(t, rec) != "payload_too_large" {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}
 }

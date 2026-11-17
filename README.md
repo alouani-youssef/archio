@@ -80,10 +80,10 @@ Admin endpoints use HTTP Basic auth with the root credentials. Every other `/v1`
 | Method and path | Auth | Description |
 |---|---|---|
 | `POST /v1/admin/groups` | Basic | Create a group `{name}`. |
-| `GET /v1/admin/groups` | Basic | List groups. |
+| `GET /v1/admin/groups` | Basic | List groups: `{"groups":[...]}`. |
 | `DELETE /v1/admin/groups/{groupId}` | Basic | Delete a group (`409` while it has buckets). |
 | `POST /v1/admin/groups/{groupId}/keys` | Basic | Issue a key `{name}`. The plaintext key is returned only once. |
-| `GET /v1/admin/groups/{groupId}/keys` | Basic | List keys. |
+| `GET /v1/admin/groups/{groupId}/keys` | Basic | List keys: `{"keys":[...]}`. |
 | `DELETE /v1/admin/groups/{groupId}/keys/{keyId}` | Basic | Revoke a key. |
 | `POST /v1/buckets` | Key | Create a bucket `{name, description?}`. Names are unique across the instance. |
 | `GET /v1/buckets` | Key | List the group's buckets. |
