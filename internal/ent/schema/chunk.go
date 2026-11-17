@@ -3,7 +3,6 @@ package schema
 import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
@@ -31,12 +30,10 @@ func (Chunk) Edges() []ent.Edge {
 	}
 }
 
+// The HNSW index on embedding is added once the embedding dimension is chosen;
+// pgvector cannot index an unsized vector column.
 func (Chunk) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("position").Edges("object").Unique(),
-		index.Fields("embedding").Annotations(
-			entsql.IndexType("hnsw"),
-			entsql.OpClass("vector_cosine_ops"),
-		),
 	}
 }

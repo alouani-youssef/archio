@@ -3,7 +3,6 @@
 package migrate
 
 import (
-	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/schema/field"
 )
@@ -50,15 +49,6 @@ var (
 				Name:    "chunk_position_object_chunks",
 				Unique:  true,
 				Columns: []*schema.Column{ChunksColumns[1], ChunksColumns[4]},
-			},
-			{
-				Name:    "chunk_embedding",
-				Unique:  false,
-				Columns: []*schema.Column{ChunksColumns[3]},
-				Annotation: &entsql.IndexAnnotation{
-					OpClass: "vector_cosine_ops",
-					Type:    "hnsw",
-				},
 			},
 		},
 	}
