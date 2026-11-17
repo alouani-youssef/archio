@@ -2,6 +2,7 @@ package objects
 
 import (
 	"context"
+	"fmt"
 
 	"archio/internal/ent"
 	"archio/internal/ent/bucket"
@@ -14,7 +15,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type repository struct{ client *ent.Client }
+type repository struct {
+	client *ent.Client
+	// commitHook, when set, wraps transaction commits; tests use it to
+	// simulate an ambiguous commit.
+	commitHook ent.CommitHook
+}
+
+// commitError reports a failed COMMIT. Its outcome is unknown: Postgres may
+// have committed, so the version's blob must be kept.
+type commitError struct{ err error }
+
+func (e *commitError) Error() string { return fmt.Sprintf("commit object version: %v", e.err) }
+func (e *commitError) Unwrap() error { return e.err }
 
 type newVersion struct {
 	id          uuid.UUID
@@ -30,11 +43,15 @@ func inBucket(bucketID int, key string) []predicate.Object {
 
 // createVersion gets or creates the object, adds the version and makes it
 // current, all in one transaction. A constraint error means a concurrent
-// upload created the object first; the caller may retry.
+// upload created the object first; the caller may retry. A failed commit is
+// returned as *commitError.
 func (r *repository) createVersion(ctx context.Context, bucketID int, key string, nv newVersion) (v *ent.ObjectVersion, err error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if r.commitHook != nil {
+		tx.OnCommit(r.commitHook)
 	}
 	defer func() {
 		if err != nil {
@@ -67,7 +84,10 @@ func (r *repository) createVersion(ctx context.Context, bucketID int, key string
 	if err = tx.Object.UpdateOne(o).SetCurrentVersion(v).Exec(ctx); err != nil {
 		return nil, err
 	}
-	return v, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return nil, &commitError{err: err}
+	}
+	return v, nil
 }
 
 // list returns up to limit+1 objects of the bucket after the cursor key,

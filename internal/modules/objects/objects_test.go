@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,9 @@ import (
 	"archio/internal/auth"
 	"archio/internal/ent"
 	"archio/internal/ent/bucket"
+	"archio/internal/ent/chunk"
+	"archio/internal/ent/exactsearchvalue"
+	"archio/internal/ent/hook"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
 	"archio/internal/ent/objectversion"
@@ -102,6 +106,8 @@ func setup(t *testing.T, opts ...option) *env {
 		for _, b := range []*ent.Bucket{e.bkt, e.other} {
 			inBucket := object.HasBucketWith(bucket.ID(b.ID))
 			_, _ = client.MetaData.Delete().Where(metadata.HasObjectWith(inBucket)).Exec(ctx)
+			_, _ = client.Chunk.Delete().Where(chunk.HasObjectWith(inBucket)).Exec(ctx)
+			_, _ = client.ExactSearchValue.Delete().Where(exactsearchvalue.HasObjectWith(inBucket)).Exec(ctx)
 			_, _ = client.ObjectVersion.Delete().Where(objectversion.HasObjectWith(inBucket)).Exec(ctx)
 			_, _ = client.Object.Delete().Where(inBucket).Exec(ctx)
 			_ = client.Bucket.DeleteOne(b).Exec(ctx)
@@ -465,6 +471,13 @@ func TestDelete_RemovesVersionsAndFiles(t *testing.T) {
 	if _, err := e.client.MetaData.Create().SetPropertyIri("https://schema.org/name").SetObject(o).Save(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := e.client.Chunk.Create().SetPosition(0).SetContent("text").SetObject(o).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.client.ExactSearchValue.Create().SetPropertyIri("https://schema.org/name").
+		SetNormalizedValue("k").SetValueType("text").SetObject(o).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	if rec := e.request(e.a, "DELETE", objectURL(e.bkt.Name, "k"), nil, nil); rec.Code != 204 {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)
@@ -481,7 +494,115 @@ func TestDelete_RemovesVersionsAndFiles(t *testing.T) {
 	if n, err := e.client.MetaData.Query().Where(metadata.HasObjectWith(object.ID(o.ID))).Count(ctx); err != nil || n != 0 {
 		t.Fatalf("metadata rows = %d, %v", n, err)
 	}
+	if n, err := e.client.Chunk.Query().Where(chunk.HasObjectWith(object.ID(o.ID))).Count(ctx); err != nil || n != 0 {
+		t.Fatalf("chunk rows = %d, %v", n, err)
+	}
+	if n, err := e.client.ExactSearchValue.Query().Where(exactsearchvalue.HasObjectWith(object.ID(o.ID))).Count(ctx); err != nil || n != 0 {
+		t.Fatalf("exact search value rows = %d, %v", n, err)
+	}
 	if rec := e.request(e.a, "DELETE", objectURL(e.bkt.Name, "k"), nil, nil); rec.Code != 404 || errCode(t, rec) != "object_not_found" {
 		t.Fatalf("second delete: %d %s", rec.Code, rec.Body)
 	}
+}
+
+// blobFiles returns the stored blobs of the bucket (excluding .tmp).
+func (e *env) blobFiles(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(e.root, e.a.ID.String(), strconv.Itoa(e.bkt.ID)))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, en := range entries {
+		names = append(names, en.Name())
+	}
+	return names
+}
+
+func TestUpload_PreCommitFailureDeletesBlob(t *testing.T) {
+	e := setup(t)
+	e.client.ObjectVersion.Use(func(ent.Mutator) ent.Mutator {
+		return hook.ObjectVersionFunc(func(context.Context, *ent.ObjectVersionMutation) (ent.Value, error) {
+			return nil, errors.New("insert failed")
+		})
+	})
+	if rec := e.put(t, "k", "hello", ""); rec.Code != 500 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+	if n := e.objectCount(t); n != 0 {
+		t.Fatalf("%d object rows, want 0", n)
+	}
+	if fs := e.blobFiles(t); len(fs) != 0 {
+		t.Fatalf("blobs left behind: %v", fs)
+	}
+	assertTmpEmpty(t, e.root)
+}
+
+func TestUpload_AmbiguousCommitKeepsBlob(t *testing.T) {
+	e := setup(t)
+	st, err := storage.NewLocal(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The commit succeeds in Postgres but the caller sees an error, as when the
+	// connection drops while COMMIT is in flight.
+	svc := &service{
+		repo: &repository{client: e.client, commitHook: func(next ent.Committer) ent.Committer {
+			return ent.CommitFunc(func(ctx context.Context, tx *ent.Tx) error {
+				if err := next.Commit(ctx, tx); err != nil {
+					return err
+				}
+				return errors.New("connection reset during commit")
+			})
+		}},
+		storage:   st,
+		publisher: e.pub,
+	}
+	ctx := auth.WithGroup(context.Background(), e.a.ID)
+	if _, err := svc.upload(ctx, e.bkt.Name, "k", "", strings.NewReader("hello")); err == nil {
+		t.Fatal("upload reported success after a commit error")
+	}
+	vs, err := e.client.ObjectVersion.Query().Where(objectversion.HasObjectWith(object.HasBucketWith(bucket.ID(e.bkt.ID)))).All(ctx)
+	if err != nil || len(vs) != 1 {
+		t.Fatalf("versions = %v, %v", vs, err)
+	}
+	if b, err := os.ReadFile(e.blobPath(vs[0].ID.String())); err != nil || string(b) != "hello" {
+		t.Fatalf("blob of committed version: %q %v", b, err)
+	}
+}
+
+func TestUpload_ClientCancelDuringDBStillCommits(t *testing.T) {
+	e := setup(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel the request context once the body is fully read, i.e. just before
+	// the DB transaction starts.
+	body := &cancelOnEOF{r: strings.NewReader("hello"), cancel: cancel}
+	req := httptest.NewRequest("PUT", objectURL(e.bkt.Name, "k"), body).WithContext(ctx)
+	req.Header.Set("X-Group", e.a.ID.String())
+	rec := httptest.NewRecorder()
+	e.h.ServeHTTP(rec, req)
+	if rec.Code != 201 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+	var v versionJSON
+	decodeInto(t, rec, &v)
+	if b, err := os.ReadFile(e.blobPath(v.VersionID)); err != nil || string(b) != "hello" {
+		t.Fatalf("blob: %q %v", b, err)
+	}
+}
+
+type cancelOnEOF struct {
+	r      io.Reader
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnEOF) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if err == io.EOF {
+		c.cancel()
+	}
+	return n, err
 }

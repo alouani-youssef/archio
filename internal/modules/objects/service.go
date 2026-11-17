@@ -24,6 +24,10 @@ const (
 	defaultListLimit   = 100
 	maxListLimit       = 1000
 	publishTimeout     = 2 * time.Second
+	// dbTimeout bounds the upload's DB transaction, which runs detached from
+	// the request: once the body is stored, a client disconnect must not
+	// abort (or make ambiguous) the commit.
+	dbTimeout = 30 * time.Second
 )
 
 var (
@@ -102,10 +106,19 @@ func (s *service) upload(ctx context.Context, bucketName, key, contentType strin
 	}
 
 	nv := newVersion{id: versionID, size: size, checksum: sum, contentType: contentType, storageKey: storageKey}
-	v, err := s.repo.createVersion(ctx, b.ID, key, nv)
-	if ent.IsConstraintError(err) {
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dbTimeout)
+	defer cancel()
+	v, err := s.repo.createVersion(dbCtx, b.ID, key, nv)
+	var commitErr *commitError
+	if ent.IsConstraintError(err) && !errors.As(err, &commitErr) {
 		// A concurrent upload created the object first; it exists now.
-		v, err = s.repo.createVersion(ctx, b.ID, key, nv)
+		v, err = s.repo.createVersion(dbCtx, b.ID, key, nv)
+	}
+	if errors.As(err, &commitErr) {
+		// The row may exist: keep the blob (an orphan is harmless, a row
+		// without bytes is not).
+		log.Printf("objects: commit outcome unknown for version %s, keeping blob %s: %v", versionID, storageKey, err)
+		return nil, err
 	}
 	if err != nil {
 		if derr := s.storage.Delete(context.WithoutCancel(ctx), storageKey); derr != nil {
