@@ -35,6 +35,10 @@ func baseValidEnv() MapEnv {
 		"BROKER_PASSWORD": "guest",
 
 		"TLS_ENABLED": "false",
+
+		"ROOT_USERNAME": "admin",
+		"ROOT_PASSWORD": "secret",
+		"STORAGE_PATH":  "/tmp/archio",
 	}
 }
 
@@ -257,4 +261,65 @@ func FuzzLoadFromEnv(f *testing.F) {
 			_ = Validate(cfg) // if Validate panics, fuzz will catch it
 		}
 	})
+}
+
+func loadOpts() LoadOptions { return LoadOptions{AllowEmptyOptional: true} }
+
+func TestLoadFrom_StorageDefaults(t *testing.T) {
+	cfg, err := LoadFrom(baseValidEnv(), loadOpts())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Storage.MaxUploadBytes != 5368709120 {
+		t.Fatalf("expected default max upload 5368709120, got %d", cfg.Storage.MaxUploadBytes)
+	}
+	if cfg.Storage.PublicBaseURL != "http://0.0.0.0:8080" {
+		t.Fatalf("unexpected public base url %q", cfg.Storage.PublicBaseURL)
+	}
+	if cfg.Auth.RootUsername != "admin" || cfg.Auth.RootPassword != "secret" || cfg.Storage.Path != "/tmp/archio" {
+		t.Fatalf("auth/storage not loaded: %+v %+v", cfg.Auth, cfg.Storage)
+	}
+}
+
+func TestLoadFrom_PublicBaseURLWithTLS(t *testing.T) {
+	env := baseValidEnv()
+	env["TLS_ENABLED"] = "true"
+	cfg, err := LoadFrom(env, loadOpts())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(cfg.Storage.PublicBaseURL, "https://") {
+		t.Fatalf("expected https default, got %q", cfg.Storage.PublicBaseURL)
+	}
+}
+
+func TestLoadFrom_PublicBaseURLTrimsSlash(t *testing.T) {
+	env := baseValidEnv()
+	env["PUBLIC_BASE_URL"] = "http://x:1/"
+	cfg, err := LoadFrom(env, loadOpts())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Storage.PublicBaseURL != "http://x:1" {
+		t.Fatalf("expected trimmed url, got %q", cfg.Storage.PublicBaseURL)
+	}
+}
+
+func TestLoadFrom_RequiresRootAndStorage(t *testing.T) {
+	for _, key := range []string{"ROOT_USERNAME", "ROOT_PASSWORD", "STORAGE_PATH"} {
+		env := baseValidEnv()
+		delete(env, key)
+		_, err := LoadFrom(env, loadOpts())
+		if err == nil || !strings.Contains(err.Error(), key) {
+			t.Fatalf("expected error mentioning %s, got %v", key, err)
+		}
+	}
+}
+
+func TestLoadFrom_InvalidMaxUpload(t *testing.T) {
+	env := baseValidEnv()
+	env["MAX_UPLOAD_BYTES"] = "0"
+	if _, err := LoadFrom(env, loadOpts()); err == nil {
+		t.Fatal("expected error for MAX_UPLOAD_BYTES=0")
+	}
 }

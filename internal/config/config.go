@@ -33,11 +33,13 @@ type LoadOptions struct {
 }
 
 type Config struct {
-	App    AppConfig
-	DB     DBConfig
-	Redis  RedisConfig
-	Broker BrokerConfig
-	TLS    TLSConfig
+	App     AppConfig
+	DB      DBConfig
+	Redis   RedisConfig
+	Broker  BrokerConfig
+	TLS     TLSConfig
+	Auth    AuthConfig
+	Storage StorageConfig
 }
 type RunMode string
 
@@ -75,6 +77,19 @@ type RedisConfig struct {
 	Database int
 }
 
+type AuthConfig struct {
+	RootUsername string
+	RootPassword string
+}
+
+type StorageConfig struct {
+	Path           string
+	PublicBaseURL  string
+	MaxUploadBytes int64
+}
+
+const defaultMaxUploadBytes int64 = 5368709120
+
 type BrokerConfig struct {
 	Host     string
 	Port     int
@@ -96,7 +111,9 @@ func LoadFrom(env EnvProvider, opts LoadOptions) (Config, error) {
 		Redis:  loadRedis(env, opts),
 		Broker: loadBroker(env, opts),
 		TLS:    loadTLS(env, opts),
+		Auth:   loadAuth(env),
 	}
+	cfg.Storage = loadStorage(env, cfg.App, cfg.TLS)
 
 	if err := Validate(cfg); err != nil {
 		return Config{}, err
@@ -151,6 +168,19 @@ func Validate(cfg Config) error {
 	}
 	if strings.TrimSpace(cfg.Broker.Password) == "" {
 		errs = append(errs, errors.New("BROKER_PASSWORD is required"))
+	}
+
+	if strings.TrimSpace(cfg.Auth.RootUsername) == "" {
+		errs = append(errs, errors.New("ROOT_USERNAME is required"))
+	}
+	if strings.TrimSpace(cfg.Auth.RootPassword) == "" {
+		errs = append(errs, errors.New("ROOT_PASSWORD is required"))
+	}
+	if strings.TrimSpace(cfg.Storage.Path) == "" {
+		errs = append(errs, errors.New("STORAGE_PATH is required"))
+	}
+	if cfg.Storage.MaxUploadBytes <= 0 {
+		errs = append(errs, fmt.Errorf("MAX_UPLOAD_BYTES must be > 0, got: %d", cfg.Storage.MaxUploadBytes))
 	}
 
 	return joinErrors(errs)
@@ -208,6 +238,39 @@ func loadTLS(env EnvProvider, opts LoadOptions) TLSConfig {
 		Enabled:  boolOrDefault(env, "TLS_ENABLED", false),
 		CertFile: stringOrDefault(env, "TLS_CERT_FILE", "", opts.AllowEmptyOptional),
 		KeyFile:  stringOrDefault(env, "TLS_KEY_FILE", "", opts.AllowEmptyOptional),
+	}
+}
+
+func loadAuth(env EnvProvider) AuthConfig {
+	return AuthConfig{
+		RootUsername: mustString(env, "ROOT_USERNAME"),
+		RootPassword: mustString(env, "ROOT_PASSWORD"),
+	}
+}
+
+func loadStorage(env EnvProvider, app AppConfig, tls TLSConfig) StorageConfig {
+	baseURL := mustString(env, "PUBLIC_BASE_URL")
+	if baseURL == "" {
+		scheme := "http"
+		if tls.Enabled {
+			scheme = "https"
+		}
+		baseURL = fmt.Sprintf("%s://%s:%d", scheme, app.Host, app.Port)
+	}
+
+	maxUpload := defaultMaxUploadBytes
+	if v := mustString(env, "MAX_UPLOAD_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			n = 0 // invalid value; Validate rejects it
+		}
+		maxUpload = n
+	}
+
+	return StorageConfig{
+		Path:           mustString(env, "STORAGE_PATH"),
+		PublicBaseURL:  strings.TrimRight(baseURL, "/"),
+		MaxUploadBytes: maxUpload,
 	}
 }
 
