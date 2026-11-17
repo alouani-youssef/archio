@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,7 +38,9 @@ type ObjectVersionCreatedEvent struct {
 
 // AMQPPublisher publishes JSON events over a dedicated AMQP channel.
 type AMQPPublisher struct {
-	mu      sync.Mutex
+	// sem is a 1-slot semaphore serializing channel use (AMQP channels are not
+	// goroutine-safe) while letting waiters honor context cancellation.
+	sem     chan struct{}
 	channel *amqp.Channel
 }
 
@@ -56,17 +57,24 @@ func NewPublisher(b *Broker) (*AMQPPublisher, error) {
 		_ = channel.Close()
 		return nil, fmt.Errorf("declare exchange %q: %w", Exchange, err)
 	}
-	return &AMQPPublisher{channel: channel}, nil
+	return &AMQPPublisher{sem: make(chan struct{}, 1), channel: channel}, nil
 }
 
 // Publish marshals payload as JSON and publishes it persistently.
 func (p *AMQPPublisher) Publish(ctx context.Context, routingKey string, payload any) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("publish %q: %w", routingKey, err)
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	select {
+	case p.sem <- struct{}{}:
+		defer func() { <-p.sem }()
+	case <-ctx.Done():
+		return fmt.Errorf("publish %q: %w", routingKey, ctx.Err())
+	}
 	if err := p.channel.PublishWithContext(ctx, Exchange, routingKey, false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
@@ -80,8 +88,8 @@ func (p *AMQPPublisher) Publish(ctx context.Context, routingKey string, payload 
 
 // Close closes the publisher channel.
 func (p *AMQPPublisher) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.sem <- struct{}{}
+	defer func() { <-p.sem }()
 	return p.channel.Close()
 }
 
