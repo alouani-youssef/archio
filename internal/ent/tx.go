@@ -12,16 +12,22 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// ApiKey is the client for interacting with the ApiKey builders.
+	ApiKey *ApiKeyClient
 	// Bucket is the client for interacting with the Bucket builders.
 	Bucket *BucketClient
 	// Chunk is the client for interacting with the Chunk builders.
 	Chunk *ChunkClient
 	// ExactSearchValue is the client for interacting with the ExactSearchValue builders.
 	ExactSearchValue *ExactSearchValueClient
+	// Group is the client for interacting with the Group builders.
+	Group *GroupClient
 	// MetaData is the client for interacting with the MetaData builders.
 	MetaData *MetaDataClient
 	// Object is the client for interacting with the Object builders.
 	Object *ObjectClient
+	// ObjectVersion is the client for interacting with the ObjectVersion builders.
+	ObjectVersion *ObjectVersionClient
 
 	// lazily loaded.
 	client     *Client
@@ -153,11 +159,14 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.ApiKey = NewApiKeyClient(tx.config)
 	tx.Bucket = NewBucketClient(tx.config)
 	tx.Chunk = NewChunkClient(tx.config)
 	tx.ExactSearchValue = NewExactSearchValueClient(tx.config)
+	tx.Group = NewGroupClient(tx.config)
 	tx.MetaData = NewMetaDataClient(tx.config)
 	tx.Object = NewObjectClient(tx.config)
+	tx.ObjectVersion = NewObjectVersionClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
@@ -167,7 +176,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Bucket.QueryXXX(), the query will be executed
+// applies a query, for example: ApiKey.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

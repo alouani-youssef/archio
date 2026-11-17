@@ -3,19 +3,46 @@
 package ent
 
 import (
+	"archio/internal/ent/apikey"
 	"archio/internal/ent/bucket"
 	"archio/internal/ent/chunk"
 	"archio/internal/ent/exactsearchvalue"
+	"archio/internal/ent/group"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"archio/internal/ent/schema"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // The init function reads all schema descriptors with runtime code
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	apikeyFields := schema.ApiKey{}.Fields()
+	_ = apikeyFields
+	// apikeyDescName is the schema descriptor for name field.
+	apikeyDescName := apikeyFields[1].Descriptor()
+	// apikey.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	apikey.NameValidator = apikeyDescName.Validators[0].(func(string) error)
+	// apikeyDescPrefix is the schema descriptor for prefix field.
+	apikeyDescPrefix := apikeyFields[2].Descriptor()
+	// apikey.PrefixValidator is a validator for the "prefix" field. It is called by the builders before save.
+	apikey.PrefixValidator = apikeyDescPrefix.Validators[0].(func(string) error)
+	// apikeyDescKeyHash is the schema descriptor for key_hash field.
+	apikeyDescKeyHash := apikeyFields[3].Descriptor()
+	// apikey.KeyHashValidator is a validator for the "key_hash" field. It is called by the builders before save.
+	apikey.KeyHashValidator = apikeyDescKeyHash.Validators[0].(func(string) error)
+	// apikeyDescCreatedAt is the schema descriptor for created_at field.
+	apikeyDescCreatedAt := apikeyFields[4].Descriptor()
+	// apikey.DefaultCreatedAt holds the default value on creation for the created_at field.
+	apikey.DefaultCreatedAt = apikeyDescCreatedAt.Default.(func() time.Time)
+	// apikeyDescID is the schema descriptor for id field.
+	apikeyDescID := apikeyFields[0].Descriptor()
+	// apikey.DefaultID holds the default value on creation for the id field.
+	apikey.DefaultID = apikeyDescID.Default.(func() uuid.UUID)
 	bucketFields := schema.Bucket{}.Fields()
 	_ = bucketFields
 	// bucketDescName is the schema descriptor for name field.
@@ -60,6 +87,26 @@ func init() {
 	exactsearchvalueDescValueType := exactsearchvalueFields[2].Descriptor()
 	// exactsearchvalue.ValueTypeValidator is a validator for the "value_type" field. It is called by the builders before save.
 	exactsearchvalue.ValueTypeValidator = exactsearchvalueDescValueType.Validators[0].(func(string) error)
+	groupFields := schema.Group{}.Fields()
+	_ = groupFields
+	// groupDescName is the schema descriptor for name field.
+	groupDescName := groupFields[1].Descriptor()
+	// group.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	group.NameValidator = groupDescName.Validators[0].(func(string) error)
+	// groupDescCreatedAt is the schema descriptor for created_at field.
+	groupDescCreatedAt := groupFields[2].Descriptor()
+	// group.DefaultCreatedAt holds the default value on creation for the created_at field.
+	group.DefaultCreatedAt = groupDescCreatedAt.Default.(func() time.Time)
+	// groupDescUpdatedAt is the schema descriptor for updated_at field.
+	groupDescUpdatedAt := groupFields[3].Descriptor()
+	// group.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	group.DefaultUpdatedAt = groupDescUpdatedAt.Default.(func() time.Time)
+	// group.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	group.UpdateDefaultUpdatedAt = groupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// groupDescID is the schema descriptor for id field.
+	groupDescID := groupFields[0].Descriptor()
+	// group.DefaultID holds the default value on creation for the id field.
+	group.DefaultID = groupDescID.Default.(func() uuid.UUID)
 	metadataFields := schema.MetaData{}.Fields()
 	_ = metadataFields
 	// metadataDescSchemaType is the schema descriptor for schema_type field.
@@ -85,13 +132,39 @@ func init() {
 	// object.DefaultSchemaType holds the default value on creation for the schema_type field.
 	object.DefaultSchemaType = objectDescSchemaType.Default.(string)
 	// objectDescCreatedAt is the schema descriptor for created_at field.
-	objectDescCreatedAt := objectFields[5].Descriptor()
+	objectDescCreatedAt := objectFields[4].Descriptor()
 	// object.DefaultCreatedAt holds the default value on creation for the created_at field.
 	object.DefaultCreatedAt = objectDescCreatedAt.Default.(func() time.Time)
 	// objectDescUpdatedAt is the schema descriptor for updated_at field.
-	objectDescUpdatedAt := objectFields[6].Descriptor()
+	objectDescUpdatedAt := objectFields[5].Descriptor()
 	// object.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	object.DefaultUpdatedAt = objectDescUpdatedAt.Default.(func() time.Time)
 	// object.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	object.UpdateDefaultUpdatedAt = objectDescUpdatedAt.UpdateDefault.(func() time.Time)
+	objectversionFields := schema.ObjectVersion{}.Fields()
+	_ = objectversionFields
+	// objectversionDescSize is the schema descriptor for size field.
+	objectversionDescSize := objectversionFields[1].Descriptor()
+	// objectversion.SizeValidator is a validator for the "size" field. It is called by the builders before save.
+	objectversion.SizeValidator = objectversionDescSize.Validators[0].(func(int64) error)
+	// objectversionDescChecksumSha256 is the schema descriptor for checksum_sha256 field.
+	objectversionDescChecksumSha256 := objectversionFields[2].Descriptor()
+	// objectversion.ChecksumSha256Validator is a validator for the "checksum_sha256" field. It is called by the builders before save.
+	objectversion.ChecksumSha256Validator = objectversionDescChecksumSha256.Validators[0].(func(string) error)
+	// objectversionDescContentType is the schema descriptor for content_type field.
+	objectversionDescContentType := objectversionFields[3].Descriptor()
+	// objectversion.ContentTypeValidator is a validator for the "content_type" field. It is called by the builders before save.
+	objectversion.ContentTypeValidator = objectversionDescContentType.Validators[0].(func(string) error)
+	// objectversionDescStorageKey is the schema descriptor for storage_key field.
+	objectversionDescStorageKey := objectversionFields[4].Descriptor()
+	// objectversion.StorageKeyValidator is a validator for the "storage_key" field. It is called by the builders before save.
+	objectversion.StorageKeyValidator = objectversionDescStorageKey.Validators[0].(func(string) error)
+	// objectversionDescCreatedAt is the schema descriptor for created_at field.
+	objectversionDescCreatedAt := objectversionFields[5].Descriptor()
+	// objectversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	objectversion.DefaultCreatedAt = objectversionDescCreatedAt.Default.(func() time.Time)
+	// objectversionDescID is the schema descriptor for id field.
+	objectversionDescID := objectversionFields[0].Descriptor()
+	// objectversion.DefaultID holds the default value on creation for the id field.
+	objectversion.DefaultID = objectversionDescID.Default.(func() uuid.UUID)
 }

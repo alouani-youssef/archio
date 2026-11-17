@@ -16,7 +16,7 @@ type Bucket struct {
 
 func (Bucket) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("name").NotEmpty(),
+		field.String("name").NotEmpty().Unique(),
 		field.String("schema_type").Default(schemaorg.DataCatalog),
 		field.String("description").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
@@ -27,5 +27,6 @@ func (Bucket) Fields() []ent.Field {
 func (Bucket) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("objects", Object.Type),
+		edge.From("group", Group.Type).Ref("buckets").Unique().Required(),
 	}
 }

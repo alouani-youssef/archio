@@ -13,6 +13,7 @@ import (
 
 	"archio/internal/config"
 	"archio/internal/ent"
+	"archio/internal/ent/migrate"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -64,7 +65,7 @@ func (c *Connection) Migrate(ctx context.Context) error {
 	if _, err := c.db.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS vector"); err != nil {
 		return fmt.Errorf("enable pgvector extension: %w", err)
 	}
-	if err := c.client.Schema.Create(ctx); err != nil {
+	if err := c.client.Schema.Create(ctx, migrate.WithDropColumn(true), migrate.WithDropIndex(true)); err != nil {
 		return fmt.Errorf("migrate ent schema: %w", err)
 	}
 	return nil

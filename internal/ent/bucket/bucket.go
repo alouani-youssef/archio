@@ -26,6 +26,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeObjects holds the string denoting the objects edge name in mutations.
 	EdgeObjects = "objects"
+	// EdgeGroup holds the string denoting the group edge name in mutations.
+	EdgeGroup = "group"
 	// Table holds the table name of the bucket in the database.
 	Table = "buckets"
 	// ObjectsTable is the table that holds the objects relation/edge.
@@ -35,6 +37,13 @@ const (
 	ObjectsInverseTable = "objects"
 	// ObjectsColumn is the table column denoting the objects relation/edge.
 	ObjectsColumn = "bucket_objects"
+	// GroupTable is the table that holds the group relation/edge.
+	GroupTable = "buckets"
+	// GroupInverseTable is the table name for the Group entity.
+	// It exists in this package in order to avoid circular dependency with the "group" package.
+	GroupInverseTable = "groups"
+	// GroupColumn is the table column denoting the group relation/edge.
+	GroupColumn = "group_buckets"
 )
 
 // Columns holds all SQL columns for bucket fields.
@@ -47,10 +56,21 @@ var Columns = []string{
 	FieldUpdatedAt,
 }
 
+// ForeignKeys holds the SQL foreign-keys that are owned by the "buckets"
+// table and are not defined as standalone fields in the schema.
+var ForeignKeys = []string{
+	"group_buckets",
+}
+
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
+			return true
+		}
+	}
+	for i := range ForeignKeys {
+		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -116,10 +136,24 @@ func ByObjects(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newObjectsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByGroupField orders the results by group field.
+func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newGroupStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newObjectsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ObjectsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ObjectsTable, ObjectsColumn),
+	)
+}
+func newGroupStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(GroupInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
 	)
 }

@@ -21,7 +21,6 @@ func (Object) Fields() []ent.Field {
 		field.String("schema_type").Default(schemaorg.Thing),
 		field.String("name").Optional(),
 		field.String("description").Optional(),
-		field.String("url").Optional(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -33,6 +32,8 @@ func (Object) Edges() []ent.Edge {
 		edge.To("metadata", MetaData.Type),
 		edge.To("chunks", Chunk.Type),
 		edge.To("exact_search_values", ExactSearchValue.Type),
+		edge.To("versions", ObjectVersion.Type),
+		edge.To("current_version", ObjectVersion.Type).Unique(),
 	}
 }
 

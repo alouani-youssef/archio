@@ -4,6 +4,7 @@ package ent
 
 import (
 	"archio/internal/ent/bucket"
+	"archio/internal/ent/group"
 	"archio/internal/ent/object"
 	"archio/internal/ent/predicate"
 	"context"
@@ -14,6 +15,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // BucketUpdate is the builder for updating Bucket entities.
@@ -98,6 +100,17 @@ func (_u *BucketUpdate) AddObjects(v ...*Object) *BucketUpdate {
 	return _u.AddObjectIDs(ids...)
 }
 
+// SetGroupID sets the "group" edge to the Group entity by ID.
+func (_u *BucketUpdate) SetGroupID(id uuid.UUID) *BucketUpdate {
+	_u.mutation.SetGroupID(id)
+	return _u
+}
+
+// SetGroup sets the "group" edge to the Group entity.
+func (_u *BucketUpdate) SetGroup(v *Group) *BucketUpdate {
+	return _u.SetGroupID(v.ID)
+}
+
 // Mutation returns the BucketMutation object of the builder.
 func (_u *BucketUpdate) Mutation() *BucketMutation {
 	return _u.mutation
@@ -122,6 +135,12 @@ func (_u *BucketUpdate) RemoveObjects(v ...*Object) *BucketUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveObjectIDs(ids...)
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (_u *BucketUpdate) ClearGroup() *BucketUpdate {
+	_u.mutation.ClearGroup()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -166,6 +185,9 @@ func (_u *BucketUpdate) check() error {
 		if err := bucket.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Bucket.name": %w`, err)}
 		}
+	}
+	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Bucket.group"`)
 	}
 	return nil
 }
@@ -235,6 +257,35 @@ func (_u *BucketUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(object.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   bucket.GroupTable,
+			Columns: []string{bucket.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   bucket.GroupTable,
+			Columns: []string{bucket.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -331,6 +382,17 @@ func (_u *BucketUpdateOne) AddObjects(v ...*Object) *BucketUpdateOne {
 	return _u.AddObjectIDs(ids...)
 }
 
+// SetGroupID sets the "group" edge to the Group entity by ID.
+func (_u *BucketUpdateOne) SetGroupID(id uuid.UUID) *BucketUpdateOne {
+	_u.mutation.SetGroupID(id)
+	return _u
+}
+
+// SetGroup sets the "group" edge to the Group entity.
+func (_u *BucketUpdateOne) SetGroup(v *Group) *BucketUpdateOne {
+	return _u.SetGroupID(v.ID)
+}
+
 // Mutation returns the BucketMutation object of the builder.
 func (_u *BucketUpdateOne) Mutation() *BucketMutation {
 	return _u.mutation
@@ -355,6 +417,12 @@ func (_u *BucketUpdateOne) RemoveObjects(v ...*Object) *BucketUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveObjectIDs(ids...)
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (_u *BucketUpdateOne) ClearGroup() *BucketUpdateOne {
+	_u.mutation.ClearGroup()
+	return _u
 }
 
 // Where appends a list predicates to the BucketUpdate builder.
@@ -412,6 +480,9 @@ func (_u *BucketUpdateOne) check() error {
 		if err := bucket.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Bucket.name": %w`, err)}
 		}
+	}
+	if _u.mutation.GroupCleared() && len(_u.mutation.GroupIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Bucket.group"`)
 	}
 	return nil
 }
@@ -498,6 +569,35 @@ func (_u *BucketUpdateOne) sqlSave(ctx context.Context) (_node *Bucket, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(object.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.GroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   bucket.GroupTable,
+			Columns: []string{bucket.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   bucket.GroupTable,
+			Columns: []string{bucket.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

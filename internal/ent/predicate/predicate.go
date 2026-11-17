@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ApiKey is the predicate function for apikey builders.
+type ApiKey func(*sql.Selector)
+
 // Bucket is the predicate function for bucket builders.
 type Bucket func(*sql.Selector)
 
@@ -15,8 +18,14 @@ type Chunk func(*sql.Selector)
 // ExactSearchValue is the predicate function for exactsearchvalue builders.
 type ExactSearchValue func(*sql.Selector)
 
+// Group is the predicate function for group builders.
+type Group func(*sql.Selector)
+
 // MetaData is the predicate function for metadata builders.
 type MetaData func(*sql.Selector)
 
 // Object is the predicate function for object builders.
 type Object func(*sql.Selector)
+
+// ObjectVersion is the predicate function for objectversion builders.
+type ObjectVersion func(*sql.Selector)

@@ -8,6 +8,18 @@ import (
 	"fmt"
 )
 
+// The ApiKeyFunc type is an adapter to allow the use of ordinary
+// function as ApiKey mutator.
+type ApiKeyFunc func(context.Context, *ent.ApiKeyMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApiKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApiKeyMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApiKeyMutation", m)
+}
+
 // The BucketFunc type is an adapter to allow the use of ordinary
 // function as Bucket mutator.
 type BucketFunc func(context.Context, *ent.BucketMutation) (ent.Value, error)
@@ -44,6 +56,18 @@ func (f ExactSearchValueFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExactSearchValueMutation", m)
 }
 
+// The GroupFunc type is an adapter to allow the use of ordinary
+// function as Group mutator.
+type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f GroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.GroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMutation", m)
+}
+
 // The MetaDataFunc type is an adapter to allow the use of ordinary
 // function as MetaData mutator.
 type MetaDataFunc func(context.Context, *ent.MetaDataMutation) (ent.Value, error)
@@ -66,6 +90,18 @@ func (f ObjectFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ObjectMutation", m)
+}
+
+// The ObjectVersionFunc type is an adapter to allow the use of ordinary
+// function as ObjectVersion mutator.
+type ObjectVersionFunc func(context.Context, *ent.ObjectVersionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ObjectVersionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ObjectVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ObjectVersionMutation", m)
 }
 
 // Condition is a hook condition function.

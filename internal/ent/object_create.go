@@ -8,6 +8,7 @@ import (
 	"archio/internal/ent/exactsearchvalue"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // ObjectCreate is the builder for creating a Object entity.
@@ -68,20 +70,6 @@ func (_c *ObjectCreate) SetDescription(v string) *ObjectCreate {
 func (_c *ObjectCreate) SetNillableDescription(v *string) *ObjectCreate {
 	if v != nil {
 		_c.SetDescription(*v)
-	}
-	return _c
-}
-
-// SetURL sets the "url" field.
-func (_c *ObjectCreate) SetURL(v string) *ObjectCreate {
-	_c.mutation.SetURL(v)
-	return _c
-}
-
-// SetNillableURL sets the "url" field if the given value is not nil.
-func (_c *ObjectCreate) SetNillableURL(v *string) *ObjectCreate {
-	if v != nil {
-		_c.SetURL(*v)
 	}
 	return _c
 }
@@ -168,6 +156,40 @@ func (_c *ObjectCreate) AddExactSearchValues(v ...*ExactSearchValue) *ObjectCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddExactSearchValueIDs(ids...)
+}
+
+// AddVersionIDs adds the "versions" edge to the ObjectVersion entity by IDs.
+func (_c *ObjectCreate) AddVersionIDs(ids ...uuid.UUID) *ObjectCreate {
+	_c.mutation.AddVersionIDs(ids...)
+	return _c
+}
+
+// AddVersions adds the "versions" edges to the ObjectVersion entity.
+func (_c *ObjectCreate) AddVersions(v ...*ObjectVersion) *ObjectCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddVersionIDs(ids...)
+}
+
+// SetCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID.
+func (_c *ObjectCreate) SetCurrentVersionID(id uuid.UUID) *ObjectCreate {
+	_c.mutation.SetCurrentVersionID(id)
+	return _c
+}
+
+// SetNillableCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID if the given value is not nil.
+func (_c *ObjectCreate) SetNillableCurrentVersionID(id *uuid.UUID) *ObjectCreate {
+	if id != nil {
+		_c = _c.SetCurrentVersionID(*id)
+	}
+	return _c
+}
+
+// SetCurrentVersion sets the "current_version" edge to the ObjectVersion entity.
+func (_c *ObjectCreate) SetCurrentVersion(v *ObjectVersion) *ObjectCreate {
+	return _c.SetCurrentVersionID(v.ID)
 }
 
 // Mutation returns the ObjectMutation object of the builder.
@@ -283,10 +305,6 @@ func (_c *ObjectCreate) createSpec() (*Object, *sqlgraph.CreateSpec) {
 		_spec.SetField(object.FieldDescription, field.TypeString, value)
 		_node.Description = value
 	}
-	if value, ok := _c.mutation.URL(); ok {
-		_spec.SetField(object.FieldURL, field.TypeString, value)
-		_node.URL = value
-	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(object.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -358,6 +376,39 @@ func (_c *ObjectCreate) createSpec() (*Object, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.VersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CurrentVersionIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   object.CurrentVersionTable,
+			Columns: []string{object.CurrentVersionColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.object_current_version = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

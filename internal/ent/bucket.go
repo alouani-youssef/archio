@@ -4,12 +4,14 @@ package ent
 
 import (
 	"archio/internal/ent/bucket"
+	"archio/internal/ent/group"
 	"fmt"
 	"strings"
 	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
 )
 
 // Bucket is the model entity for the Bucket schema.
@@ -29,17 +31,20 @@ type Bucket struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the BucketQuery when eager-loading is set.
-	Edges        BucketEdges `json:"edges"`
-	selectValues sql.SelectValues
+	Edges         BucketEdges `json:"edges"`
+	group_buckets *uuid.UUID
+	selectValues  sql.SelectValues
 }
 
 // BucketEdges holds the relations/edges for other nodes in the graph.
 type BucketEdges struct {
 	// Objects holds the value of the objects edge.
 	Objects []*Object `json:"objects,omitempty"`
+	// Group holds the value of the group edge.
+	Group *Group `json:"group,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // ObjectsOrErr returns the Objects value or an error if the edge
@@ -49,6 +54,17 @@ func (e BucketEdges) ObjectsOrErr() ([]*Object, error) {
 		return e.Objects, nil
 	}
 	return nil, &NotLoadedError{edge: "objects"}
+}
+
+// GroupOrErr returns the Group value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e BucketEdges) GroupOrErr() (*Group, error) {
+	if e.Group != nil {
+		return e.Group, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: group.Label}
+	}
+	return nil, &NotLoadedError{edge: "group"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -62,6 +78,8 @@ func (*Bucket) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case bucket.FieldCreatedAt, bucket.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
+		case bucket.ForeignKeys[0]: // group_buckets
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -113,6 +131,13 @@ func (_m *Bucket) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
+		case bucket.ForeignKeys[0]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field group_buckets", values[i])
+			} else if value.Valid {
+				_m.group_buckets = new(uuid.UUID)
+				*_m.group_buckets = *value.S.(*uuid.UUID)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -129,6 +154,11 @@ func (_m *Bucket) Value(name string) (ent.Value, error) {
 // QueryObjects queries the "objects" edge of the Bucket entity.
 func (_m *Bucket) QueryObjects() *ObjectQuery {
 	return NewBucketClient(_m.config).QueryObjects(_m)
+}
+
+// QueryGroup queries the "group" edge of the Bucket entity.
+func (_m *Bucket) QueryGroup() *GroupQuery {
+	return NewBucketClient(_m.config).QueryGroup(_m)
 }
 
 // Update returns a builder for updating this Bucket.

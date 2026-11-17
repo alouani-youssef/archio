@@ -4,6 +4,7 @@ package ent
 
 import (
 	"archio/internal/ent/bucket"
+	"archio/internal/ent/group"
 	"archio/internal/ent/object"
 	"archio/internal/ent/predicate"
 	"context"
@@ -15,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // BucketQuery is the builder for querying Bucket entities.
@@ -25,6 +27,8 @@ type BucketQuery struct {
 	inters      []Interceptor
 	predicates  []predicate.Bucket
 	withObjects *ObjectQuery
+	withGroup   *GroupQuery
+	withFKs     bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -76,6 +80,28 @@ func (_q *BucketQuery) QueryObjects() *ObjectQuery {
 			sqlgraph.From(bucket.Table, bucket.FieldID, selector),
 			sqlgraph.To(object.Table, object.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, bucket.ObjectsTable, bucket.ObjectsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryGroup chains the current query on the "group" edge.
+func (_q *BucketQuery) QueryGroup() *GroupQuery {
+	query := (&GroupClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(bucket.Table, bucket.FieldID, selector),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, bucket.GroupTable, bucket.GroupColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -276,6 +302,7 @@ func (_q *BucketQuery) Clone() *BucketQuery {
 		inters:      append([]Interceptor{}, _q.inters...),
 		predicates:  append([]predicate.Bucket{}, _q.predicates...),
 		withObjects: _q.withObjects.Clone(),
+		withGroup:   _q.withGroup.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -290,6 +317,17 @@ func (_q *BucketQuery) WithObjects(opts ...func(*ObjectQuery)) *BucketQuery {
 		opt(query)
 	}
 	_q.withObjects = query
+	return _q
+}
+
+// WithGroup tells the query-builder to eager-load the nodes that are connected to
+// the "group" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *BucketQuery) WithGroup(opts ...func(*GroupQuery)) *BucketQuery {
+	query := (&GroupClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withGroup = query
 	return _q
 }
 
@@ -370,11 +408,19 @@ func (_q *BucketQuery) prepareQuery(ctx context.Context) error {
 func (_q *BucketQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Bucket, error) {
 	var (
 		nodes       = []*Bucket{}
+		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withObjects != nil,
+			_q.withGroup != nil,
 		}
 	)
+	if _q.withGroup != nil {
+		withFKs = true
+	}
+	if withFKs {
+		_spec.Node.Columns = append(_spec.Node.Columns, bucket.ForeignKeys...)
+	}
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Bucket).scanValues(nil, columns)
 	}
@@ -397,6 +443,12 @@ func (_q *BucketQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Bucke
 		if err := _q.loadObjects(ctx, query, nodes,
 			func(n *Bucket) { n.Edges.Objects = []*Object{} },
 			func(n *Bucket, e *Object) { n.Edges.Objects = append(n.Edges.Objects, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withGroup; query != nil {
+		if err := _q.loadGroup(ctx, query, nodes, nil,
+			func(n *Bucket, e *Group) { n.Edges.Group = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -431,6 +483,38 @@ func (_q *BucketQuery) loadObjects(ctx context.Context, query *ObjectQuery, node
 			return fmt.Errorf(`unexpected referenced foreign-key "bucket_objects" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
+	}
+	return nil
+}
+func (_q *BucketQuery) loadGroup(ctx context.Context, query *GroupQuery, nodes []*Bucket, init func(*Bucket), assign func(*Bucket, *Group)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Bucket)
+	for i := range nodes {
+		if nodes[i].group_buckets == nil {
+			continue
+		}
+		fk := *nodes[i].group_buckets
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(group.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "group_buckets" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
 	}
 	return nil
 }

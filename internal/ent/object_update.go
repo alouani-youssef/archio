@@ -8,6 +8,7 @@ import (
 	"archio/internal/ent/exactsearchvalue"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"archio/internal/ent/predicate"
 	"context"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // ObjectUpdate is the builder for updating Object entities.
@@ -100,26 +102,6 @@ func (_u *ObjectUpdate) ClearDescription() *ObjectUpdate {
 	return _u
 }
 
-// SetURL sets the "url" field.
-func (_u *ObjectUpdate) SetURL(v string) *ObjectUpdate {
-	_u.mutation.SetURL(v)
-	return _u
-}
-
-// SetNillableURL sets the "url" field if the given value is not nil.
-func (_u *ObjectUpdate) SetNillableURL(v *string) *ObjectUpdate {
-	if v != nil {
-		_u.SetURL(*v)
-	}
-	return _u
-}
-
-// ClearURL clears the value of the "url" field.
-func (_u *ObjectUpdate) ClearURL() *ObjectUpdate {
-	_u.mutation.ClearURL()
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ObjectUpdate) SetUpdatedAt(v time.Time) *ObjectUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -180,6 +162,40 @@ func (_u *ObjectUpdate) AddExactSearchValues(v ...*ExactSearchValue) *ObjectUpda
 		ids[i] = v[i].ID
 	}
 	return _u.AddExactSearchValueIDs(ids...)
+}
+
+// AddVersionIDs adds the "versions" edge to the ObjectVersion entity by IDs.
+func (_u *ObjectUpdate) AddVersionIDs(ids ...uuid.UUID) *ObjectUpdate {
+	_u.mutation.AddVersionIDs(ids...)
+	return _u
+}
+
+// AddVersions adds the "versions" edges to the ObjectVersion entity.
+func (_u *ObjectUpdate) AddVersions(v ...*ObjectVersion) *ObjectUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVersionIDs(ids...)
+}
+
+// SetCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID.
+func (_u *ObjectUpdate) SetCurrentVersionID(id uuid.UUID) *ObjectUpdate {
+	_u.mutation.SetCurrentVersionID(id)
+	return _u
+}
+
+// SetNillableCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID if the given value is not nil.
+func (_u *ObjectUpdate) SetNillableCurrentVersionID(id *uuid.UUID) *ObjectUpdate {
+	if id != nil {
+		_u = _u.SetCurrentVersionID(*id)
+	}
+	return _u
+}
+
+// SetCurrentVersion sets the "current_version" edge to the ObjectVersion entity.
+func (_u *ObjectUpdate) SetCurrentVersion(v *ObjectVersion) *ObjectUpdate {
+	return _u.SetCurrentVersionID(v.ID)
 }
 
 // Mutation returns the ObjectMutation object of the builder.
@@ -254,6 +270,33 @@ func (_u *ObjectUpdate) RemoveExactSearchValues(v ...*ExactSearchValue) *ObjectU
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveExactSearchValueIDs(ids...)
+}
+
+// ClearVersions clears all "versions" edges to the ObjectVersion entity.
+func (_u *ObjectUpdate) ClearVersions() *ObjectUpdate {
+	_u.mutation.ClearVersions()
+	return _u
+}
+
+// RemoveVersionIDs removes the "versions" edge to ObjectVersion entities by IDs.
+func (_u *ObjectUpdate) RemoveVersionIDs(ids ...uuid.UUID) *ObjectUpdate {
+	_u.mutation.RemoveVersionIDs(ids...)
+	return _u
+}
+
+// RemoveVersions removes "versions" edges to ObjectVersion entities.
+func (_u *ObjectUpdate) RemoveVersions(v ...*ObjectVersion) *ObjectUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVersionIDs(ids...)
+}
+
+// ClearCurrentVersion clears the "current_version" edge to the ObjectVersion entity.
+func (_u *ObjectUpdate) ClearCurrentVersion() *ObjectUpdate {
+	_u.mutation.ClearCurrentVersion()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -334,12 +377,6 @@ func (_u *ObjectUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(object.FieldDescription, field.TypeString)
-	}
-	if value, ok := _u.mutation.URL(); ok {
-		_spec.SetField(object.FieldURL, field.TypeString, value)
-	}
-	if _u.mutation.URLCleared() {
-		_spec.ClearField(object.FieldURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(object.FieldUpdatedAt, field.TypeTime, value)
@@ -508,6 +545,80 @@ func (_u *ObjectUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.VersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVersionsIDs(); len(nodes) > 0 && !_u.mutation.VersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CurrentVersionCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   object.CurrentVersionTable,
+			Columns: []string{object.CurrentVersionColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CurrentVersionIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   object.CurrentVersionTable,
+			Columns: []string{object.CurrentVersionColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{object.Label}
@@ -596,26 +707,6 @@ func (_u *ObjectUpdateOne) ClearDescription() *ObjectUpdateOne {
 	return _u
 }
 
-// SetURL sets the "url" field.
-func (_u *ObjectUpdateOne) SetURL(v string) *ObjectUpdateOne {
-	_u.mutation.SetURL(v)
-	return _u
-}
-
-// SetNillableURL sets the "url" field if the given value is not nil.
-func (_u *ObjectUpdateOne) SetNillableURL(v *string) *ObjectUpdateOne {
-	if v != nil {
-		_u.SetURL(*v)
-	}
-	return _u
-}
-
-// ClearURL clears the value of the "url" field.
-func (_u *ObjectUpdateOne) ClearURL() *ObjectUpdateOne {
-	_u.mutation.ClearURL()
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ObjectUpdateOne) SetUpdatedAt(v time.Time) *ObjectUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -676,6 +767,40 @@ func (_u *ObjectUpdateOne) AddExactSearchValues(v ...*ExactSearchValue) *ObjectU
 		ids[i] = v[i].ID
 	}
 	return _u.AddExactSearchValueIDs(ids...)
+}
+
+// AddVersionIDs adds the "versions" edge to the ObjectVersion entity by IDs.
+func (_u *ObjectUpdateOne) AddVersionIDs(ids ...uuid.UUID) *ObjectUpdateOne {
+	_u.mutation.AddVersionIDs(ids...)
+	return _u
+}
+
+// AddVersions adds the "versions" edges to the ObjectVersion entity.
+func (_u *ObjectUpdateOne) AddVersions(v ...*ObjectVersion) *ObjectUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddVersionIDs(ids...)
+}
+
+// SetCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID.
+func (_u *ObjectUpdateOne) SetCurrentVersionID(id uuid.UUID) *ObjectUpdateOne {
+	_u.mutation.SetCurrentVersionID(id)
+	return _u
+}
+
+// SetNillableCurrentVersionID sets the "current_version" edge to the ObjectVersion entity by ID if the given value is not nil.
+func (_u *ObjectUpdateOne) SetNillableCurrentVersionID(id *uuid.UUID) *ObjectUpdateOne {
+	if id != nil {
+		_u = _u.SetCurrentVersionID(*id)
+	}
+	return _u
+}
+
+// SetCurrentVersion sets the "current_version" edge to the ObjectVersion entity.
+func (_u *ObjectUpdateOne) SetCurrentVersion(v *ObjectVersion) *ObjectUpdateOne {
+	return _u.SetCurrentVersionID(v.ID)
 }
 
 // Mutation returns the ObjectMutation object of the builder.
@@ -750,6 +875,33 @@ func (_u *ObjectUpdateOne) RemoveExactSearchValues(v ...*ExactSearchValue) *Obje
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveExactSearchValueIDs(ids...)
+}
+
+// ClearVersions clears all "versions" edges to the ObjectVersion entity.
+func (_u *ObjectUpdateOne) ClearVersions() *ObjectUpdateOne {
+	_u.mutation.ClearVersions()
+	return _u
+}
+
+// RemoveVersionIDs removes the "versions" edge to ObjectVersion entities by IDs.
+func (_u *ObjectUpdateOne) RemoveVersionIDs(ids ...uuid.UUID) *ObjectUpdateOne {
+	_u.mutation.RemoveVersionIDs(ids...)
+	return _u
+}
+
+// RemoveVersions removes "versions" edges to ObjectVersion entities.
+func (_u *ObjectUpdateOne) RemoveVersions(v ...*ObjectVersion) *ObjectUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveVersionIDs(ids...)
+}
+
+// ClearCurrentVersion clears the "current_version" edge to the ObjectVersion entity.
+func (_u *ObjectUpdateOne) ClearCurrentVersion() *ObjectUpdateOne {
+	_u.mutation.ClearCurrentVersion()
+	return _u
 }
 
 // Where appends a list predicates to the ObjectUpdate builder.
@@ -861,12 +1013,6 @@ func (_u *ObjectUpdateOne) sqlSave(ctx context.Context) (_node *Object, err erro
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(object.FieldDescription, field.TypeString)
 	}
-	if value, ok := _u.mutation.URL(); ok {
-		_spec.SetField(object.FieldURL, field.TypeString, value)
-	}
-	if _u.mutation.URLCleared() {
-		_spec.ClearField(object.FieldURL, field.TypeString)
-	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(object.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -1027,6 +1173,80 @@ func (_u *ObjectUpdateOne) sqlSave(ctx context.Context) (_node *Object, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(exactsearchvalue.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.VersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedVersionsIDs(); len(nodes) > 0 && !_u.mutation.VersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.VersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   object.VersionsTable,
+			Columns: []string{object.VersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CurrentVersionCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   object.CurrentVersionTable,
+			Columns: []string{object.CurrentVersionColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CurrentVersionIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   object.CurrentVersionTable,
+			Columns: []string{object.CurrentVersionColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(objectversion.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

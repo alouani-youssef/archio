@@ -8,20 +8,54 @@ import (
 )
 
 var (
+	// APIKeysColumns holds the columns for the "api_keys" table.
+	APIKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "prefix", Type: field.TypeString},
+		{Name: "key_hash", Type: field.TypeString, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "group_api_keys", Type: field.TypeUUID},
+	}
+	// APIKeysTable holds the schema information for the "api_keys" table.
+	APIKeysTable = &schema.Table{
+		Name:       "api_keys",
+		Columns:    APIKeysColumns,
+		PrimaryKey: []*schema.Column{APIKeysColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "api_keys_groups_api_keys",
+				Columns:    []*schema.Column{APIKeysColumns[7]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// BucketsColumns holds the columns for the "buckets" table.
 	BucketsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
-		{Name: "name", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString, Unique: true},
 		{Name: "schema_type", Type: field.TypeString, Default: "https://schema.org/DataCatalog"},
 		{Name: "description", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "group_buckets", Type: field.TypeUUID},
 	}
 	// BucketsTable holds the schema information for the "buckets" table.
 	BucketsTable = &schema.Table{
 		Name:       "buckets",
 		Columns:    BucketsColumns,
 		PrimaryKey: []*schema.Column{BucketsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "buckets_groups_buckets",
+				Columns:    []*schema.Column{BucketsColumns[6]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
 	}
 	// ChunksColumns holds the columns for the "chunks" table.
 	ChunksColumns = []*schema.Column{
@@ -81,6 +115,19 @@ var (
 			},
 		},
 	}
+	// GroupsColumns holds the columns for the "groups" table.
+	GroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// GroupsTable holds the schema information for the "groups" table.
+	GroupsTable = &schema.Table{
+		Name:       "groups",
+		Columns:    GroupsColumns,
+		PrimaryKey: []*schema.Column{GroupsColumns[0]},
+	}
 	// MetaDataColumns holds the columns for the "meta_data" table.
 	MetaDataColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -118,10 +165,10 @@ var (
 		{Name: "schema_type", Type: field.TypeString, Default: "https://schema.org/Thing"},
 		{Name: "name", Type: field.TypeString, Nullable: true},
 		{Name: "description", Type: field.TypeString, Nullable: true},
-		{Name: "url", Type: field.TypeString, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "bucket_objects", Type: field.TypeInt},
+		{Name: "object_current_version", Type: field.TypeUUID, Nullable: true},
 	}
 	// ObjectsTable holds the schema information for the "objects" table.
 	ObjectsTable = &schema.Table{
@@ -131,32 +178,76 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "objects_buckets_objects",
-				Columns:    []*schema.Column{ObjectsColumns[8]},
+				Columns:    []*schema.Column{ObjectsColumns[7]},
 				RefColumns: []*schema.Column{BucketsColumns[0]},
 				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "objects_object_versions_current_version",
+				Columns:    []*schema.Column{ObjectsColumns[8]},
+				RefColumns: []*schema.Column{ObjectVersionsColumns[0]},
+				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "object_identifier_bucket_objects",
 				Unique:  true,
-				Columns: []*schema.Column{ObjectsColumns[1], ObjectsColumns[8]},
+				Columns: []*schema.Column{ObjectsColumns[1], ObjectsColumns[7]},
+			},
+		},
+	}
+	// ObjectVersionsColumns holds the columns for the "object_versions" table.
+	ObjectVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "size", Type: field.TypeInt64},
+		{Name: "checksum_sha256", Type: field.TypeString},
+		{Name: "content_type", Type: field.TypeString},
+		{Name: "storage_key", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "object_versions", Type: field.TypeInt},
+	}
+	// ObjectVersionsTable holds the schema information for the "object_versions" table.
+	ObjectVersionsTable = &schema.Table{
+		Name:       "object_versions",
+		Columns:    ObjectVersionsColumns,
+		PrimaryKey: []*schema.Column{ObjectVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "object_versions_objects_versions",
+				Columns:    []*schema.Column{ObjectVersionsColumns[6]},
+				RefColumns: []*schema.Column{ObjectsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "objectversion_created_at_object_versions",
+				Unique:  false,
+				Columns: []*schema.Column{ObjectVersionsColumns[5], ObjectVersionsColumns[6]},
 			},
 		},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		APIKeysTable,
 		BucketsTable,
 		ChunksTable,
 		ExactSearchValuesTable,
+		GroupsTable,
 		MetaDataTable,
 		ObjectsTable,
+		ObjectVersionsTable,
 	}
 )
 
 func init() {
+	APIKeysTable.ForeignKeys[0].RefTable = GroupsTable
+	BucketsTable.ForeignKeys[0].RefTable = GroupsTable
 	ChunksTable.ForeignKeys[0].RefTable = ObjectsTable
 	ExactSearchValuesTable.ForeignKeys[0].RefTable = ObjectsTable
 	MetaDataTable.ForeignKeys[0].RefTable = ObjectsTable
 	ObjectsTable.ForeignKeys[0].RefTable = BucketsTable
+	ObjectsTable.ForeignKeys[1].RefTable = ObjectVersionsTable
+	ObjectVersionsTable.ForeignKeys[0].RefTable = ObjectsTable
 }

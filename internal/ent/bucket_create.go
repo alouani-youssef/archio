@@ -4,6 +4,7 @@ package ent
 
 import (
 	"archio/internal/ent/bucket"
+	"archio/internal/ent/group"
 	"archio/internal/ent/object"
 	"context"
 	"errors"
@@ -12,6 +13,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // BucketCreate is the builder for creating a Bucket entity.
@@ -98,6 +100,17 @@ func (_c *BucketCreate) AddObjects(v ...*Object) *BucketCreate {
 	return _c.AddObjectIDs(ids...)
 }
 
+// SetGroupID sets the "group" edge to the Group entity by ID.
+func (_c *BucketCreate) SetGroupID(id uuid.UUID) *BucketCreate {
+	_c.mutation.SetGroupID(id)
+	return _c
+}
+
+// SetGroup sets the "group" edge to the Group entity.
+func (_c *BucketCreate) SetGroup(v *Group) *BucketCreate {
+	return _c.SetGroupID(v.ID)
+}
+
 // Mutation returns the BucketMutation object of the builder.
 func (_c *BucketCreate) Mutation() *BucketMutation {
 	return _c.mutation
@@ -166,6 +179,9 @@ func (_c *BucketCreate) check() error {
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Bucket.updated_at"`)}
 	}
+	if len(_c.mutation.GroupIDs()) == 0 {
+		return &ValidationError{Name: "group", err: errors.New(`ent: missing required edge "Bucket.group"`)}
+	}
 	return nil
 }
 
@@ -226,6 +242,23 @@ func (_c *BucketCreate) createSpec() (*Bucket, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.GroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   bucket.GroupTable,
+			Columns: []string{bucket.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.group_buckets = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

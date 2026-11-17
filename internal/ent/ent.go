@@ -3,11 +3,14 @@
 package ent
 
 import (
+	"archio/internal/ent/apikey"
 	"archio/internal/ent/bucket"
 	"archio/internal/ent/chunk"
 	"archio/internal/ent/exactsearchvalue"
+	"archio/internal/ent/group"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"context"
 	"errors"
 	"fmt"
@@ -77,11 +80,14 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			apikey.Table:           apikey.ValidColumn,
 			bucket.Table:           bucket.ValidColumn,
 			chunk.Table:            chunk.ValidColumn,
 			exactsearchvalue.Table: exactsearchvalue.ValidColumn,
+			group.Table:            group.ValidColumn,
 			metadata.Table:         metadata.ValidColumn,
 			object.Table:           object.ValidColumn,
+			objectversion.Table:    objectversion.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -75,11 +75,6 @@ func Description(v string) predicate.Object {
 	return predicate.Object(sql.FieldEQ(FieldDescription, v))
 }
 
-// URL applies equality check predicate on the "url" field. It's identical to URLEQ.
-func URL(v string) predicate.Object {
-	return predicate.Object(sql.FieldEQ(FieldURL, v))
-}
-
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Object {
 	return predicate.Object(sql.FieldEQ(FieldCreatedAt, v))
@@ -370,81 +365,6 @@ func DescriptionContainsFold(v string) predicate.Object {
 	return predicate.Object(sql.FieldContainsFold(FieldDescription, v))
 }
 
-// URLEQ applies the EQ predicate on the "url" field.
-func URLEQ(v string) predicate.Object {
-	return predicate.Object(sql.FieldEQ(FieldURL, v))
-}
-
-// URLNEQ applies the NEQ predicate on the "url" field.
-func URLNEQ(v string) predicate.Object {
-	return predicate.Object(sql.FieldNEQ(FieldURL, v))
-}
-
-// URLIn applies the In predicate on the "url" field.
-func URLIn(vs ...string) predicate.Object {
-	return predicate.Object(sql.FieldIn(FieldURL, vs...))
-}
-
-// URLNotIn applies the NotIn predicate on the "url" field.
-func URLNotIn(vs ...string) predicate.Object {
-	return predicate.Object(sql.FieldNotIn(FieldURL, vs...))
-}
-
-// URLGT applies the GT predicate on the "url" field.
-func URLGT(v string) predicate.Object {
-	return predicate.Object(sql.FieldGT(FieldURL, v))
-}
-
-// URLGTE applies the GTE predicate on the "url" field.
-func URLGTE(v string) predicate.Object {
-	return predicate.Object(sql.FieldGTE(FieldURL, v))
-}
-
-// URLLT applies the LT predicate on the "url" field.
-func URLLT(v string) predicate.Object {
-	return predicate.Object(sql.FieldLT(FieldURL, v))
-}
-
-// URLLTE applies the LTE predicate on the "url" field.
-func URLLTE(v string) predicate.Object {
-	return predicate.Object(sql.FieldLTE(FieldURL, v))
-}
-
-// URLContains applies the Contains predicate on the "url" field.
-func URLContains(v string) predicate.Object {
-	return predicate.Object(sql.FieldContains(FieldURL, v))
-}
-
-// URLHasPrefix applies the HasPrefix predicate on the "url" field.
-func URLHasPrefix(v string) predicate.Object {
-	return predicate.Object(sql.FieldHasPrefix(FieldURL, v))
-}
-
-// URLHasSuffix applies the HasSuffix predicate on the "url" field.
-func URLHasSuffix(v string) predicate.Object {
-	return predicate.Object(sql.FieldHasSuffix(FieldURL, v))
-}
-
-// URLIsNil applies the IsNil predicate on the "url" field.
-func URLIsNil() predicate.Object {
-	return predicate.Object(sql.FieldIsNull(FieldURL))
-}
-
-// URLNotNil applies the NotNil predicate on the "url" field.
-func URLNotNil() predicate.Object {
-	return predicate.Object(sql.FieldNotNull(FieldURL))
-}
-
-// URLEqualFold applies the EqualFold predicate on the "url" field.
-func URLEqualFold(v string) predicate.Object {
-	return predicate.Object(sql.FieldEqualFold(FieldURL, v))
-}
-
-// URLContainsFold applies the ContainsFold predicate on the "url" field.
-func URLContainsFold(v string) predicate.Object {
-	return predicate.Object(sql.FieldContainsFold(FieldURL, v))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Object {
 	return predicate.Object(sql.FieldEQ(FieldCreatedAt, v))
@@ -609,6 +529,52 @@ func HasExactSearchValues() predicate.Object {
 func HasExactSearchValuesWith(preds ...predicate.ExactSearchValue) predicate.Object {
 	return predicate.Object(func(s *sql.Selector) {
 		step := newExactSearchValuesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasVersions applies the HasEdge predicate on the "versions" edge.
+func HasVersions() predicate.Object {
+	return predicate.Object(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, VersionsTable, VersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasVersionsWith applies the HasEdge predicate on the "versions" edge with a given conditions (other predicates).
+func HasVersionsWith(preds ...predicate.ObjectVersion) predicate.Object {
+	return predicate.Object(func(s *sql.Selector) {
+		step := newVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCurrentVersion applies the HasEdge predicate on the "current_version" edge.
+func HasCurrentVersion() predicate.Object {
+	return predicate.Object(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, CurrentVersionTable, CurrentVersionColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCurrentVersionWith applies the HasEdge predicate on the "current_version" edge with a given conditions (other predicates).
+func HasCurrentVersionWith(preds ...predicate.ObjectVersion) predicate.Object {
+	return predicate.Object(func(s *sql.Selector) {
+		step := newCurrentVersionStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

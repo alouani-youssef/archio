@@ -5,12 +5,14 @@ package ent
 import (
 	"archio/internal/ent/bucket"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"fmt"
 	"strings"
 	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
 )
 
 // Object is the model entity for the Object schema.
@@ -26,17 +28,16 @@ type Object struct {
 	Name string `json:"name,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
-	// URL holds the value of the "url" field.
-	URL string `json:"url,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ObjectQuery when eager-loading is set.
-	Edges          ObjectEdges `json:"edges"`
-	bucket_objects *int
-	selectValues   sql.SelectValues
+	Edges                  ObjectEdges `json:"edges"`
+	bucket_objects         *int
+	object_current_version *uuid.UUID
+	selectValues           sql.SelectValues
 }
 
 // ObjectEdges holds the relations/edges for other nodes in the graph.
@@ -49,9 +50,13 @@ type ObjectEdges struct {
 	Chunks []*Chunk `json:"chunks,omitempty"`
 	// ExactSearchValues holds the value of the exact_search_values edge.
 	ExactSearchValues []*ExactSearchValue `json:"exact_search_values,omitempty"`
+	// Versions holds the value of the versions edge.
+	Versions []*ObjectVersion `json:"versions,omitempty"`
+	// CurrentVersion holds the value of the current_version edge.
+	CurrentVersion *ObjectVersion `json:"current_version,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [6]bool
 }
 
 // BucketOrErr returns the Bucket value or an error if the edge
@@ -92,6 +97,26 @@ func (e ObjectEdges) ExactSearchValuesOrErr() ([]*ExactSearchValue, error) {
 	return nil, &NotLoadedError{edge: "exact_search_values"}
 }
 
+// VersionsOrErr returns the Versions value or an error if the edge
+// was not loaded in eager-loading.
+func (e ObjectEdges) VersionsOrErr() ([]*ObjectVersion, error) {
+	if e.loadedTypes[4] {
+		return e.Versions, nil
+	}
+	return nil, &NotLoadedError{edge: "versions"}
+}
+
+// CurrentVersionOrErr returns the CurrentVersion value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ObjectEdges) CurrentVersionOrErr() (*ObjectVersion, error) {
+	if e.CurrentVersion != nil {
+		return e.CurrentVersion, nil
+	} else if e.loadedTypes[5] {
+		return nil, &NotFoundError{label: objectversion.Label}
+	}
+	return nil, &NotLoadedError{edge: "current_version"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Object) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -99,12 +124,14 @@ func (*Object) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case object.FieldID:
 			values[i] = new(sql.NullInt64)
-		case object.FieldIdentifier, object.FieldSchemaType, object.FieldName, object.FieldDescription, object.FieldURL:
+		case object.FieldIdentifier, object.FieldSchemaType, object.FieldName, object.FieldDescription:
 			values[i] = new(sql.NullString)
 		case object.FieldCreatedAt, object.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case object.ForeignKeys[0]: // bucket_objects
 			values[i] = new(sql.NullInt64)
+		case object.ForeignKeys[1]: // object_current_version
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -150,12 +177,6 @@ func (_m *Object) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Description = value.String
 			}
-		case object.FieldURL:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field url", values[i])
-			} else if value.Valid {
-				_m.URL = value.String
-			}
 		case object.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -174,6 +195,13 @@ func (_m *Object) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.bucket_objects = new(int)
 				*_m.bucket_objects = int(value.Int64)
+			}
+		case object.ForeignKeys[1]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field object_current_version", values[i])
+			} else if value.Valid {
+				_m.object_current_version = new(uuid.UUID)
+				*_m.object_current_version = *value.S.(*uuid.UUID)
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -206,6 +234,16 @@ func (_m *Object) QueryChunks() *ChunkQuery {
 // QueryExactSearchValues queries the "exact_search_values" edge of the Object entity.
 func (_m *Object) QueryExactSearchValues() *ExactSearchValueQuery {
 	return NewObjectClient(_m.config).QueryExactSearchValues(_m)
+}
+
+// QueryVersions queries the "versions" edge of the Object entity.
+func (_m *Object) QueryVersions() *ObjectVersionQuery {
+	return NewObjectClient(_m.config).QueryVersions(_m)
+}
+
+// QueryCurrentVersion queries the "current_version" edge of the Object entity.
+func (_m *Object) QueryCurrentVersion() *ObjectVersionQuery {
+	return NewObjectClient(_m.config).QueryCurrentVersion(_m)
 }
 
 // Update returns a builder for updating this Object.
@@ -242,9 +280,6 @@ func (_m *Object) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)
-	builder.WriteString(", ")
-	builder.WriteString("url=")
-	builder.WriteString(_m.URL)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

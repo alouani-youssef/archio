@@ -11,16 +11,20 @@ import (
 
 	"archio/internal/ent/migrate"
 
+	"archio/internal/ent/apikey"
 	"archio/internal/ent/bucket"
 	"archio/internal/ent/chunk"
 	"archio/internal/ent/exactsearchvalue"
+	"archio/internal/ent/group"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/google/uuid"
 )
 
 // Client is the client that holds all ent builders.
@@ -28,16 +32,22 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// ApiKey is the client for interacting with the ApiKey builders.
+	ApiKey *ApiKeyClient
 	// Bucket is the client for interacting with the Bucket builders.
 	Bucket *BucketClient
 	// Chunk is the client for interacting with the Chunk builders.
 	Chunk *ChunkClient
 	// ExactSearchValue is the client for interacting with the ExactSearchValue builders.
 	ExactSearchValue *ExactSearchValueClient
+	// Group is the client for interacting with the Group builders.
+	Group *GroupClient
 	// MetaData is the client for interacting with the MetaData builders.
 	MetaData *MetaDataClient
 	// Object is the client for interacting with the Object builders.
 	Object *ObjectClient
+	// ObjectVersion is the client for interacting with the ObjectVersion builders.
+	ObjectVersion *ObjectVersionClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -49,11 +59,14 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.ApiKey = NewApiKeyClient(c.config)
 	c.Bucket = NewBucketClient(c.config)
 	c.Chunk = NewChunkClient(c.config)
 	c.ExactSearchValue = NewExactSearchValueClient(c.config)
+	c.Group = NewGroupClient(c.config)
 	c.MetaData = NewMetaDataClient(c.config)
 	c.Object = NewObjectClient(c.config)
+	c.ObjectVersion = NewObjectVersionClient(c.config)
 }
 
 type (
@@ -146,11 +159,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:              ctx,
 		config:           cfg,
+		ApiKey:           NewApiKeyClient(cfg),
 		Bucket:           NewBucketClient(cfg),
 		Chunk:            NewChunkClient(cfg),
 		ExactSearchValue: NewExactSearchValueClient(cfg),
+		Group:            NewGroupClient(cfg),
 		MetaData:         NewMetaDataClient(cfg),
 		Object:           NewObjectClient(cfg),
+		ObjectVersion:    NewObjectVersionClient(cfg),
 	}, nil
 }
 
@@ -170,18 +186,21 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:              ctx,
 		config:           cfg,
+		ApiKey:           NewApiKeyClient(cfg),
 		Bucket:           NewBucketClient(cfg),
 		Chunk:            NewChunkClient(cfg),
 		ExactSearchValue: NewExactSearchValueClient(cfg),
+		Group:            NewGroupClient(cfg),
 		MetaData:         NewMetaDataClient(cfg),
 		Object:           NewObjectClient(cfg),
+		ObjectVersion:    NewObjectVersionClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Bucket.
+//		ApiKey.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -203,38 +222,195 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Bucket.Use(hooks...)
-	c.Chunk.Use(hooks...)
-	c.ExactSearchValue.Use(hooks...)
-	c.MetaData.Use(hooks...)
-	c.Object.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.ApiKey, c.Bucket, c.Chunk, c.ExactSearchValue, c.Group, c.MetaData, c.Object,
+		c.ObjectVersion,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Bucket.Intercept(interceptors...)
-	c.Chunk.Intercept(interceptors...)
-	c.ExactSearchValue.Intercept(interceptors...)
-	c.MetaData.Intercept(interceptors...)
-	c.Object.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.ApiKey, c.Bucket, c.Chunk, c.ExactSearchValue, c.Group, c.MetaData, c.Object,
+		c.ObjectVersion,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ApiKeyMutation:
+		return c.ApiKey.mutate(ctx, m)
 	case *BucketMutation:
 		return c.Bucket.mutate(ctx, m)
 	case *ChunkMutation:
 		return c.Chunk.mutate(ctx, m)
 	case *ExactSearchValueMutation:
 		return c.ExactSearchValue.mutate(ctx, m)
+	case *GroupMutation:
+		return c.Group.mutate(ctx, m)
 	case *MetaDataMutation:
 		return c.MetaData.mutate(ctx, m)
 	case *ObjectMutation:
 		return c.Object.mutate(ctx, m)
+	case *ObjectVersionMutation:
+		return c.ObjectVersion.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ApiKeyClient is a client for the ApiKey schema.
+type ApiKeyClient struct {
+	config
+}
+
+// NewApiKeyClient returns a client for the ApiKey from the given config.
+func NewApiKeyClient(c config) *ApiKeyClient {
+	return &ApiKeyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `apikey.Hooks(f(g(h())))`.
+func (c *ApiKeyClient) Use(hooks ...Hook) {
+	c.hooks.ApiKey = append(c.hooks.ApiKey, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `apikey.Intercept(f(g(h())))`.
+func (c *ApiKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ApiKey = append(c.inters.ApiKey, interceptors...)
+}
+
+// Create returns a builder for creating a ApiKey entity.
+func (c *ApiKeyClient) Create() *ApiKeyCreate {
+	mutation := newApiKeyMutation(c.config, OpCreate)
+	return &ApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ApiKey entities.
+func (c *ApiKeyClient) CreateBulk(builders ...*ApiKeyCreate) *ApiKeyCreateBulk {
+	return &ApiKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApiKeyClient) MapCreateBulk(slice any, setFunc func(*ApiKeyCreate, int)) *ApiKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApiKeyCreateBulk{err: fmt.Errorf("calling to ApiKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApiKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApiKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ApiKey.
+func (c *ApiKeyClient) Update() *ApiKeyUpdate {
+	mutation := newApiKeyMutation(c.config, OpUpdate)
+	return &ApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApiKeyClient) UpdateOne(_m *ApiKey) *ApiKeyUpdateOne {
+	mutation := newApiKeyMutation(c.config, OpUpdateOne, withApiKey(_m))
+	return &ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApiKeyClient) UpdateOneID(id uuid.UUID) *ApiKeyUpdateOne {
+	mutation := newApiKeyMutation(c.config, OpUpdateOne, withApiKeyID(id))
+	return &ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ApiKey.
+func (c *ApiKeyClient) Delete() *ApiKeyDelete {
+	mutation := newApiKeyMutation(c.config, OpDelete)
+	return &ApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApiKeyClient) DeleteOne(_m *ApiKey) *ApiKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApiKeyClient) DeleteOneID(id uuid.UUID) *ApiKeyDeleteOne {
+	builder := c.Delete().Where(apikey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApiKeyDeleteOne{builder}
+}
+
+// Query returns a query builder for ApiKey.
+func (c *ApiKeyClient) Query() *ApiKeyQuery {
+	return &ApiKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApiKey},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ApiKey entity by its id.
+func (c *ApiKeyClient) Get(ctx context.Context, id uuid.UUID) (*ApiKey, error) {
+	return c.Query().Where(apikey.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApiKeyClient) GetX(ctx context.Context, id uuid.UUID) *ApiKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryGroup queries the group edge of a ApiKey.
+func (c *ApiKeyClient) QueryGroup(_m *ApiKey) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikey.GroupTable, apikey.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ApiKeyClient) Hooks() []Hook {
+	return c.hooks.ApiKey
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApiKeyClient) Interceptors() []Interceptor {
+	return c.inters.ApiKey
+}
+
+func (c *ApiKeyClient) mutate(ctx context.Context, m *ApiKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApiKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApiKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApiKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApiKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ApiKey mutation op: %q", m.Op())
 	}
 }
 
@@ -355,6 +531,22 @@ func (c *BucketClient) QueryObjects(_m *Bucket) *ObjectQuery {
 			sqlgraph.From(bucket.Table, bucket.FieldID, id),
 			sqlgraph.To(object.Table, object.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, bucket.ObjectsTable, bucket.ObjectsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a Bucket.
+func (c *BucketClient) QueryGroup(_m *Bucket) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(bucket.Table, bucket.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, bucket.GroupTable, bucket.GroupColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -685,6 +877,171 @@ func (c *ExactSearchValueClient) mutate(ctx context.Context, m *ExactSearchValue
 	}
 }
 
+// GroupClient is a client for the Group schema.
+type GroupClient struct {
+	config
+}
+
+// NewGroupClient returns a client for the Group from the given config.
+func NewGroupClient(c config) *GroupClient {
+	return &GroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `group.Hooks(f(g(h())))`.
+func (c *GroupClient) Use(hooks ...Hook) {
+	c.hooks.Group = append(c.hooks.Group, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `group.Intercept(f(g(h())))`.
+func (c *GroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Group = append(c.inters.Group, interceptors...)
+}
+
+// Create returns a builder for creating a Group entity.
+func (c *GroupClient) Create() *GroupCreate {
+	mutation := newGroupMutation(c.config, OpCreate)
+	return &GroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Group entities.
+func (c *GroupClient) CreateBulk(builders ...*GroupCreate) *GroupCreateBulk {
+	return &GroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *GroupClient) MapCreateBulk(slice any, setFunc func(*GroupCreate, int)) *GroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &GroupCreateBulk{err: fmt.Errorf("calling to GroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*GroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &GroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Group.
+func (c *GroupClient) Update() *GroupUpdate {
+	mutation := newGroupMutation(c.config, OpUpdate)
+	return &GroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *GroupClient) UpdateOne(_m *Group) *GroupUpdateOne {
+	mutation := newGroupMutation(c.config, OpUpdateOne, withGroup(_m))
+	return &GroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *GroupClient) UpdateOneID(id uuid.UUID) *GroupUpdateOne {
+	mutation := newGroupMutation(c.config, OpUpdateOne, withGroupID(id))
+	return &GroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Group.
+func (c *GroupClient) Delete() *GroupDelete {
+	mutation := newGroupMutation(c.config, OpDelete)
+	return &GroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *GroupClient) DeleteOne(_m *Group) *GroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *GroupClient) DeleteOneID(id uuid.UUID) *GroupDeleteOne {
+	builder := c.Delete().Where(group.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &GroupDeleteOne{builder}
+}
+
+// Query returns a query builder for Group.
+func (c *GroupClient) Query() *GroupQuery {
+	return &GroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Group entity by its id.
+func (c *GroupClient) Get(ctx context.Context, id uuid.UUID) (*Group, error) {
+	return c.Query().Where(group.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *GroupClient) GetX(ctx context.Context, id uuid.UUID) *Group {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryBuckets queries the buckets edge of a Group.
+func (c *GroupClient) QueryBuckets(_m *Group) *BucketQuery {
+	query := (&BucketClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(bucket.Table, bucket.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.BucketsTable, group.BucketsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAPIKeys queries the api_keys edge of a Group.
+func (c *GroupClient) QueryAPIKeys(_m *Group) *ApiKeyQuery {
+	query := (&ApiKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.APIKeysTable, group.APIKeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *GroupClient) Hooks() []Hook {
+	return c.hooks.Group
+}
+
+// Interceptors returns the client interceptors.
+func (c *GroupClient) Interceptors() []Interceptor {
+	return c.inters.Group
+}
+
+func (c *GroupClient) mutate(ctx context.Context, m *GroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&GroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&GroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&GroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&GroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Group mutation op: %q", m.Op())
+	}
+}
+
 // MetaDataClient is a client for the MetaData schema.
 type MetaDataClient struct {
 	config
@@ -1006,6 +1363,38 @@ func (c *ObjectClient) QueryExactSearchValues(_m *Object) *ExactSearchValueQuery
 	return query
 }
 
+// QueryVersions queries the versions edge of a Object.
+func (c *ObjectClient) QueryVersions(_m *Object) *ObjectVersionQuery {
+	query := (&ObjectVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(object.Table, object.FieldID, id),
+			sqlgraph.To(objectversion.Table, objectversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, object.VersionsTable, object.VersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryCurrentVersion queries the current_version edge of a Object.
+func (c *ObjectClient) QueryCurrentVersion(_m *Object) *ObjectVersionQuery {
+	query := (&ObjectVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(object.Table, object.FieldID, id),
+			sqlgraph.To(objectversion.Table, objectversion.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, object.CurrentVersionTable, object.CurrentVersionColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ObjectClient) Hooks() []Hook {
 	return c.hooks.Object
@@ -1031,12 +1420,163 @@ func (c *ObjectClient) mutate(ctx context.Context, m *ObjectMutation) (Value, er
 	}
 }
 
+// ObjectVersionClient is a client for the ObjectVersion schema.
+type ObjectVersionClient struct {
+	config
+}
+
+// NewObjectVersionClient returns a client for the ObjectVersion from the given config.
+func NewObjectVersionClient(c config) *ObjectVersionClient {
+	return &ObjectVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `objectversion.Hooks(f(g(h())))`.
+func (c *ObjectVersionClient) Use(hooks ...Hook) {
+	c.hooks.ObjectVersion = append(c.hooks.ObjectVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `objectversion.Intercept(f(g(h())))`.
+func (c *ObjectVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ObjectVersion = append(c.inters.ObjectVersion, interceptors...)
+}
+
+// Create returns a builder for creating a ObjectVersion entity.
+func (c *ObjectVersionClient) Create() *ObjectVersionCreate {
+	mutation := newObjectVersionMutation(c.config, OpCreate)
+	return &ObjectVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ObjectVersion entities.
+func (c *ObjectVersionClient) CreateBulk(builders ...*ObjectVersionCreate) *ObjectVersionCreateBulk {
+	return &ObjectVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ObjectVersionClient) MapCreateBulk(slice any, setFunc func(*ObjectVersionCreate, int)) *ObjectVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ObjectVersionCreateBulk{err: fmt.Errorf("calling to ObjectVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ObjectVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ObjectVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ObjectVersion.
+func (c *ObjectVersionClient) Update() *ObjectVersionUpdate {
+	mutation := newObjectVersionMutation(c.config, OpUpdate)
+	return &ObjectVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ObjectVersionClient) UpdateOne(_m *ObjectVersion) *ObjectVersionUpdateOne {
+	mutation := newObjectVersionMutation(c.config, OpUpdateOne, withObjectVersion(_m))
+	return &ObjectVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ObjectVersionClient) UpdateOneID(id uuid.UUID) *ObjectVersionUpdateOne {
+	mutation := newObjectVersionMutation(c.config, OpUpdateOne, withObjectVersionID(id))
+	return &ObjectVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ObjectVersion.
+func (c *ObjectVersionClient) Delete() *ObjectVersionDelete {
+	mutation := newObjectVersionMutation(c.config, OpDelete)
+	return &ObjectVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ObjectVersionClient) DeleteOne(_m *ObjectVersion) *ObjectVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ObjectVersionClient) DeleteOneID(id uuid.UUID) *ObjectVersionDeleteOne {
+	builder := c.Delete().Where(objectversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ObjectVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for ObjectVersion.
+func (c *ObjectVersionClient) Query() *ObjectVersionQuery {
+	return &ObjectVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeObjectVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ObjectVersion entity by its id.
+func (c *ObjectVersionClient) Get(ctx context.Context, id uuid.UUID) (*ObjectVersion, error) {
+	return c.Query().Where(objectversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ObjectVersionClient) GetX(ctx context.Context, id uuid.UUID) *ObjectVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryObject queries the object edge of a ObjectVersion.
+func (c *ObjectVersionClient) QueryObject(_m *ObjectVersion) *ObjectQuery {
+	query := (&ObjectClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(objectversion.Table, objectversion.FieldID, id),
+			sqlgraph.To(object.Table, object.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, objectversion.ObjectTable, objectversion.ObjectColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ObjectVersionClient) Hooks() []Hook {
+	return c.hooks.ObjectVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *ObjectVersionClient) Interceptors() []Interceptor {
+	return c.inters.ObjectVersion
+}
+
+func (c *ObjectVersionClient) mutate(ctx context.Context, m *ObjectVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ObjectVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ObjectVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ObjectVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ObjectVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ObjectVersion mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Bucket, Chunk, ExactSearchValue, MetaData, Object []ent.Hook
+		ApiKey, Bucket, Chunk, ExactSearchValue, Group, MetaData, Object,
+		ObjectVersion []ent.Hook
 	}
 	inters struct {
-		Bucket, Chunk, ExactSearchValue, MetaData, Object []ent.Interceptor
+		ApiKey, Bucket, Chunk, ExactSearchValue, Group, MetaData, Object,
+		ObjectVersion []ent.Interceptor
 	}
 )

@@ -8,6 +8,7 @@ import (
 	"archio/internal/ent/exactsearchvalue"
 	"archio/internal/ent/metadata"
 	"archio/internal/ent/object"
+	"archio/internal/ent/objectversion"
 	"archio/internal/ent/predicate"
 	"context"
 	"database/sql/driver"
@@ -18,6 +19,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 )
 
 // ObjectQuery is the builder for querying Object entities.
@@ -31,6 +33,8 @@ type ObjectQuery struct {
 	withMetadata          *MetaDataQuery
 	withChunks            *ChunkQuery
 	withExactSearchValues *ExactSearchValueQuery
+	withVersions          *ObjectVersionQuery
+	withCurrentVersion    *ObjectVersionQuery
 	withFKs               bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -149,6 +153,50 @@ func (_q *ObjectQuery) QueryExactSearchValues() *ExactSearchValueQuery {
 			sqlgraph.From(object.Table, object.FieldID, selector),
 			sqlgraph.To(exactsearchvalue.Table, exactsearchvalue.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, object.ExactSearchValuesTable, object.ExactSearchValuesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryVersions chains the current query on the "versions" edge.
+func (_q *ObjectQuery) QueryVersions() *ObjectVersionQuery {
+	query := (&ObjectVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(object.Table, object.FieldID, selector),
+			sqlgraph.To(objectversion.Table, objectversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, object.VersionsTable, object.VersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCurrentVersion chains the current query on the "current_version" edge.
+func (_q *ObjectQuery) QueryCurrentVersion() *ObjectVersionQuery {
+	query := (&ObjectVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(object.Table, object.FieldID, selector),
+			sqlgraph.To(objectversion.Table, objectversion.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, object.CurrentVersionTable, object.CurrentVersionColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -352,6 +400,8 @@ func (_q *ObjectQuery) Clone() *ObjectQuery {
 		withMetadata:          _q.withMetadata.Clone(),
 		withChunks:            _q.withChunks.Clone(),
 		withExactSearchValues: _q.withExactSearchValues.Clone(),
+		withVersions:          _q.withVersions.Clone(),
+		withCurrentVersion:    _q.withCurrentVersion.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -399,6 +449,28 @@ func (_q *ObjectQuery) WithExactSearchValues(opts ...func(*ExactSearchValueQuery
 		opt(query)
 	}
 	_q.withExactSearchValues = query
+	return _q
+}
+
+// WithVersions tells the query-builder to eager-load the nodes that are connected to
+// the "versions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ObjectQuery) WithVersions(opts ...func(*ObjectVersionQuery)) *ObjectQuery {
+	query := (&ObjectVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withVersions = query
+	return _q
+}
+
+// WithCurrentVersion tells the query-builder to eager-load the nodes that are connected to
+// the "current_version" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ObjectQuery) WithCurrentVersion(opts ...func(*ObjectVersionQuery)) *ObjectQuery {
+	query := (&ObjectVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCurrentVersion = query
 	return _q
 }
 
@@ -481,14 +553,16 @@ func (_q *ObjectQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Objec
 		nodes       = []*Object{}
 		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [6]bool{
 			_q.withBucket != nil,
 			_q.withMetadata != nil,
 			_q.withChunks != nil,
 			_q.withExactSearchValues != nil,
+			_q.withVersions != nil,
+			_q.withCurrentVersion != nil,
 		}
 	)
-	if _q.withBucket != nil {
+	if _q.withBucket != nil || _q.withCurrentVersion != nil {
 		withFKs = true
 	}
 	if withFKs {
@@ -536,6 +610,19 @@ func (_q *ObjectQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Objec
 		if err := _q.loadExactSearchValues(ctx, query, nodes,
 			func(n *Object) { n.Edges.ExactSearchValues = []*ExactSearchValue{} },
 			func(n *Object, e *ExactSearchValue) { n.Edges.ExactSearchValues = append(n.Edges.ExactSearchValues, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withVersions; query != nil {
+		if err := _q.loadVersions(ctx, query, nodes,
+			func(n *Object) { n.Edges.Versions = []*ObjectVersion{} },
+			func(n *Object, e *ObjectVersion) { n.Edges.Versions = append(n.Edges.Versions, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCurrentVersion; query != nil {
+		if err := _q.loadCurrentVersion(ctx, query, nodes, nil,
+			func(n *Object, e *ObjectVersion) { n.Edges.CurrentVersion = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -664,6 +751,69 @@ func (_q *ObjectQuery) loadExactSearchValues(ctx context.Context, query *ExactSe
 			return fmt.Errorf(`unexpected referenced foreign-key "object_exact_search_values" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
+	}
+	return nil
+}
+func (_q *ObjectQuery) loadVersions(ctx context.Context, query *ObjectVersionQuery, nodes []*Object, init func(*Object), assign func(*Object, *ObjectVersion)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Object)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	query.withFKs = true
+	query.Where(predicate.ObjectVersion(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(object.VersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.object_versions
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "object_versions" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "object_versions" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ObjectQuery) loadCurrentVersion(ctx context.Context, query *ObjectVersionQuery, nodes []*Object, init func(*Object), assign func(*Object, *ObjectVersion)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Object)
+	for i := range nodes {
+		if nodes[i].object_current_version == nil {
+			continue
+		}
+		fk := *nodes[i].object_current_version
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(objectversion.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "object_current_version" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
 	}
 	return nil
 }

@@ -35,6 +35,8 @@ docker compose up -d
 
 The Compose stack provides PostgreSQL with the `vector` extension enabled, Redis, and RabbitMQ. PostgreSQL data, Redis data, and RabbitMQ data persist in named Docker volumes. RabbitMQ's management UI is available at `http://127.0.0.1:15672`.
 
+Note: the group, API key and object version schema change requires a fresh database volume. Reset local data with `docker compose down -v` before starting the stack.
+
 Copy `.env.example` to `.env` to use the matching local connection settings, then start the server during local development:
 
 ```bash

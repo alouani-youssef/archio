@@ -22,8 +22,6 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
-	// FieldURL holds the string denoting the url field in the database.
-	FieldURL = "url"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -36,6 +34,10 @@ const (
 	EdgeChunks = "chunks"
 	// EdgeExactSearchValues holds the string denoting the exact_search_values edge name in mutations.
 	EdgeExactSearchValues = "exact_search_values"
+	// EdgeVersions holds the string denoting the versions edge name in mutations.
+	EdgeVersions = "versions"
+	// EdgeCurrentVersion holds the string denoting the current_version edge name in mutations.
+	EdgeCurrentVersion = "current_version"
 	// Table holds the table name of the object in the database.
 	Table = "objects"
 	// BucketTable is the table that holds the bucket relation/edge.
@@ -66,6 +68,20 @@ const (
 	ExactSearchValuesInverseTable = "exact_search_values"
 	// ExactSearchValuesColumn is the table column denoting the exact_search_values relation/edge.
 	ExactSearchValuesColumn = "object_exact_search_values"
+	// VersionsTable is the table that holds the versions relation/edge.
+	VersionsTable = "object_versions"
+	// VersionsInverseTable is the table name for the ObjectVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "objectversion" package.
+	VersionsInverseTable = "object_versions"
+	// VersionsColumn is the table column denoting the versions relation/edge.
+	VersionsColumn = "object_versions"
+	// CurrentVersionTable is the table that holds the current_version relation/edge.
+	CurrentVersionTable = "objects"
+	// CurrentVersionInverseTable is the table name for the ObjectVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "objectversion" package.
+	CurrentVersionInverseTable = "object_versions"
+	// CurrentVersionColumn is the table column denoting the current_version relation/edge.
+	CurrentVersionColumn = "object_current_version"
 )
 
 // Columns holds all SQL columns for object fields.
@@ -75,7 +91,6 @@ var Columns = []string{
 	FieldSchemaType,
 	FieldName,
 	FieldDescription,
-	FieldURL,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -84,6 +99,7 @@ var Columns = []string{
 // table and are not defined as standalone fields in the schema.
 var ForeignKeys = []string{
 	"bucket_objects",
+	"object_current_version",
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -140,11 +156,6 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
-}
-
-// ByURL orders the results by the url field.
-func ByURL(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldURL, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.
@@ -205,6 +216,27 @@ func ByExactSearchValues(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption
 		sqlgraph.OrderByNeighborTerms(s, newExactSearchValuesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByVersionsCount orders the results by versions count.
+func ByVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newVersionsStep(), opts...)
+	}
+}
+
+// ByVersions orders the results by versions terms.
+func ByVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCurrentVersionField orders the results by current_version field.
+func ByCurrentVersionField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCurrentVersionStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newBucketStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -231,5 +263,19 @@ func newExactSearchValuesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ExactSearchValuesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ExactSearchValuesTable, ExactSearchValuesColumn),
+	)
+}
+func newVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(VersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, VersionsTable, VersionsColumn),
+	)
+}
+func newCurrentVersionStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CurrentVersionInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, CurrentVersionTable, CurrentVersionColumn),
 	)
 }
