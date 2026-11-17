@@ -422,6 +422,25 @@ func TestUpload_OtherGroupBucket(t *testing.T) {
 	}
 }
 
+func TestOtherGroupBucket_ListVersionsDeleteAre404(t *testing.T) {
+	e := setup(t)
+	mustPut(t, e, "k", "one", "")
+	bName := e.bkt.Name // belongs to group a; group b targets it
+	for _, c := range []struct{ method, target string }{
+		{"GET", "/v1/buckets/" + bName + "/objects"},
+		{"GET", "/v1/buckets/" + bName + "/versions/k"},
+		{"DELETE", objectURL(bName, "k")},
+	} {
+		rec := e.request(e.b, c.method, c.target, nil, nil)
+		if rec.Code != 404 || errCode(t, rec) != "bucket_not_found" {
+			t.Fatalf("%s %s: %d %s", c.method, c.target, rec.Code, rec.Body)
+		}
+	}
+	if got := e.versions(t, "k"); len(got) != 1 {
+		t.Fatalf("object damaged by other group's delete: %v", got)
+	}
+}
+
 func TestUpload_NoGroupIs401(t *testing.T) {
 	e := setup(t)
 	rec := e.request(nil, "PUT", objectURL(e.bkt.Name, "k"), strings.NewReader("x"), nil)

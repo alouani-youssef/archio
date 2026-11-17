@@ -193,6 +193,47 @@ func TestApp_EndToEnd(t *testing.T) {
 		}
 	}
 
+	// Admin routes reject missing, wrong and bearer credentials.
+	adminPath := "/v1/admin/groups"
+	if status, _ := c.do("GET", adminPath, "", "", "", "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("admin without credentials: %d, want 401", status)
+	}
+	if status, _ := c.do("GET", adminPath, "root-e2e", "wrong", "", "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("admin with wrong password: %d, want 401", status)
+	}
+	if status, _ := c.do("GET", adminPath, "", "", keyA, "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("admin with bearer key: %d, want 401", status)
+	}
+
+	// Revoking keyA cuts off both reads and API calls.
+	status, groups := c.admin("GET", adminPath, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list groups: %d", status)
+	}
+	var revoked bool
+	for _, g := range groups["groups"].([]any) {
+		gid := g.(map[string]any)["id"].(string)
+		_, keys := c.admin("GET", adminPath+"/"+gid+"/keys", nil)
+		for _, k := range keys["keys"].([]any) {
+			km := k.(map[string]any)
+			if km["prefix"] == keyA[:len(km["prefix"].(string))] {
+				if st, _ := c.admin("DELETE", adminPath+"/"+gid+"/keys/"+km["id"].(string), nil); st != http.StatusNoContent {
+					t.Fatalf("revoke: %d", st)
+				}
+				revoked = true
+			}
+		}
+	}
+	if !revoked {
+		t.Fatal("keyA not found among listed keys")
+	}
+	if status, _ := c.do("GET", pathOf(readURLs[0]), "", "", keyA, "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("read with revoked key: %d, want 401", status)
+	}
+	if status, _ := c.do("GET", "/v1/buckets", "", "", keyA, "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("list buckets with revoked key: %d, want 401", status)
+	}
+
 	if status, body := c.do("GET", "/health", "", "", "", "", nil); status != http.StatusOK {
 		t.Fatalf("health: %d %s", status, body)
 	}
