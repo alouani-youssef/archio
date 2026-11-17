@@ -12,19 +12,31 @@ type Checker interface {
 	Ping(context.Context) error
 }
 
+type Dependencies struct {
+	Postgres Checker
+	Redis    Checker
+	RabbitMQ Checker
+}
+
 type Handler struct {
-	checker Checker
-	timeout time.Duration
+	dependencies Dependencies
+	timeout      time.Duration
+}
+
+type dependencyStatus struct {
+	Postgres string `json:"postgres"`
+	Redis    string `json:"redis"`
+	RabbitMQ string `json:"rabbitmq"`
 }
 
 type response struct {
-	Status   string `json:"status"`
-	Database string `json:"database"`
+	Status       string           `json:"status"`
+	Dependencies dependencyStatus `json:"dependencies"`
 }
 
-// NewHandler creates a readiness handler that checks its dependency on each request.
-func NewHandler(checker Checker) *Handler {
-	return &Handler{checker: checker, timeout: 2 * time.Second}
+// NewHandler creates a readiness handler that checks every configured dependency.
+func NewHandler(dependencies Dependencies) *Handler {
+	return &Handler{dependencies: dependencies, timeout: 2 * time.Second}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,12 +50,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
 	defer cancel()
 
-	if h.checker == nil || h.checker.Ping(ctx) != nil {
+	status := dependencyStatus{
+		Postgres: check(ctx, h.dependencies.Postgres),
+		Redis:    check(ctx, h.dependencies.Redis),
+		RabbitMQ: check(ctx, h.dependencies.RabbitMQ),
+	}
+	if status.Postgres != "ok" || status.Redis != "ok" || status.RabbitMQ != "ok" {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(response{Status: "not_ready", Database: "unavailable"})
+		_ = json.NewEncoder(w).Encode(response{Status: "not_ready", Dependencies: status})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response{Status: "ok", Database: "ok"})
+	_ = json.NewEncoder(w).Encode(response{Status: "ok", Dependencies: status})
+}
+
+func check(ctx context.Context, checker Checker) string {
+	if checker == nil || checker.Ping(ctx) != nil {
+		return "unavailable"
+	}
+	return "ok"
 }

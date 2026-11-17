@@ -50,7 +50,7 @@ This approach is proposed because the repository already separates bucket module
 - Database migration should create the `vector` extension before the vector column/index is applied.
 - Application startup should fail clearly if PostgreSQL connection or schema setup fails, and close the Ent client on shutdown.
 - Application startup should fail clearly if any configured infrastructure connection fails, and close already-opened connections on failure or shutdown.
-- The health endpoint should return HTTP 503 when PostgreSQL is not ready and should not expose connection strings or credentials.
+- The health endpoint should return HTTP 503 when any managed dependency is not ready and should not expose connection strings or credentials.
 - The health endpoint should report a generic unavailable state for each failed dependency without exposing raw connection errors.
 
 ## Open implementation decisions

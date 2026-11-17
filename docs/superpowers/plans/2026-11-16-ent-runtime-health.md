@@ -6,7 +6,7 @@
 
 **Architecture:** `cmd/api` loads configuration and delegates to `internal/app`; `internal/database` owns the shared pgx SQL pool and Ent client; `internal/cache` owns Redis; `internal/events` owns RabbitMQ; `internal/app` opens, migrates, wires, and closes infrastructure; `internal/modules/health` owns readiness responses; `internal/server` only mounts handlers and runs HTTP.
 
-**Tech Stack:** Go 1.25, Ent, pgx/v5, pgvector-go, go-redis, amqp091-go, PostgreSQL 16 with pgvector, Redis, RabbitMQ.
+**Tech Stack:** Go 1.25.6, Ent, pgx/v5, pgvector-go, go-redis, amqp091-go, PostgreSQL 16 with pgvector, Redis, RabbitMQ.
 
 **Spec:** `docs/superpowers/specs/2026-11-16-ent-schemaorg-storage-design.md`
 
@@ -80,8 +80,8 @@
 - [x] Build a safely escaped PostgreSQL DSN from the current DB configuration.
 - [x] Configure bounded pool defaults and ensure startup returns a wrapped error on ping failure.
 - [x] Implement extension-first schema migration, ping, client access, and idempotent close.
-- [ ] Add Redis and RabbitMQ connection packages using the existing config fields and context-aware checks.
-- [ ] Ensure partially opened connections are closed when a later startup step fails.
+- [x] Add Redis and RabbitMQ connection packages using the existing config fields and context-aware checks.
+- [x] Ensure partially opened connections are closed when a later startup step fails.
 - [x] Run `gofmt` on the database package.
 
 ### Task 3: Add readiness module and modular application wiring
@@ -98,9 +98,9 @@
 - `app.New(ctx context.Context, cfg config.Config) (*App, error)`, `(*App).Run(ctx context.Context) error`, and `(*App).Close() error` own startup, server execution, and cleanup.
 
 - [x] Implement dependency-injected readiness handling without exposing raw errors.
-- [ ] Report PostgreSQL, Redis, and RabbitMQ states from the health handler, without raw errors.
-- [ ] Build all three connections, run Ent migrations, and register module routes in `app.New`.
-- [ ] Close every opened connection on startup failure and shutdown.
+- [x] Report PostgreSQL, Redis, and RabbitMQ states from the health handler, without raw errors.
+- [x] Build all three connections, run Ent migrations, and register module routes in `app.New`.
+- [x] Close every opened connection on startup failure and shutdown.
 - [x] Preserve TLS settings, statsviz in development, and graceful HTTP shutdown.
 - [x] Replace the inline health route and bootstrap logic in `cmd/api/main.go` with app lifecycle calls.
 - [x] Run `gofmt` on changed Go files.

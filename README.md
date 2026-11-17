@@ -4,7 +4,7 @@ Archio is a Go-based HTTP server application.
 
 ## Prerequisites
 
-- Go (1.21+)
+- Go (1.25.6+)
 - Docker (optional, for containerization)
 
 ## Getting Started
@@ -41,7 +41,7 @@ Copy `.env.example` to `.env` to use the matching local connection settings, the
 go run ./cmd/api
 ```
 
-At startup, Archio opens PostgreSQL, enables pgvector if needed, and applies the Ent schema. `/health` is a readiness check: it returns HTTP 200 when PostgreSQL is reachable and HTTP 503 otherwise. If `.env` specifies `RUN_MODE=development`, a `statsviz` visualization dashboard is available.
+At startup, Archio opens PostgreSQL, Redis, and RabbitMQ, enables pgvector if needed, and applies the Ent schema. `/health` is a readiness check: it returns HTTP 200 when all three services are reachable and HTTP 503 otherwise, with a per-service status and no raw connection errors. If `.env` specifies `RUN_MODE=development`, a `statsviz` visualization dashboard is available.
 
 After changing an Ent schema, regenerate the client and migration definitions:
 
