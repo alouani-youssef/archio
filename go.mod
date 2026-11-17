@@ -11,6 +11,7 @@ require (
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/rabbitmq/amqp091-go v1.16.0
 	github.com/redis/go-redis/v9 v9.22.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -51,7 +52,6 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 tool entgo.io/ent/cmd/ent

@@ -14,6 +14,7 @@ import (
 	"archio/internal/middlewares"
 	"archio/internal/modules/admin"
 	"archio/internal/modules/buckets"
+	"archio/internal/modules/docs"
 	"archio/internal/modules/health"
 	"archio/internal/modules/objects"
 	"archio/internal/server"
@@ -93,6 +94,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 				MaxUploadBytes: cfg.Storage.MaxUploadBytes,
 			}, keyAuth)
 		},
+		docs.RegisterRoutes,
 	)
 	if cfg.App.IsDev {
 		statsviz.Register(mux)

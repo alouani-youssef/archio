@@ -1,0 +1,479 @@
+openapi: 3.1.0
+info:
+  title: Archio API
+  version: 1.0.0
+  description: |
+    API-only object storage inspired by MinIO. Buckets belong to groups; each
+    group has API keys. Every upload creates an immutable version with exactly
+    one authenticated read URL.
+
+    - Admin endpoints (`/v1/admin/...`) use HTTP Basic auth with `ROOT_USERNAME` / `ROOT_PASSWORD`.
+    - All other `/v1` endpoints use `Authorization: Bearer <api-key>`.
+    - Anything that belongs to another group answers `404`, never `403`.
+servers:
+  - url: /
+tags:
+  - name: health
+  - name: admin
+  - name: buckets
+  - name: objects
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Readiness check for PostgreSQL, Redis and RabbitMQ
+      security: []
+      responses:
+        "200":
+          description: All dependencies reachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: At least one dependency unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /v1/admin/groups:
+    post:
+      tags: [admin]
+      summary: Create a group
+      security: [{ basicAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NameRequest" }
+      responses:
+        "201":
+          description: Group created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+    get:
+      tags: [admin]
+      summary: List groups
+      security: [{ basicAuth: [] }]
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/admin/groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    delete:
+      tags: [admin]
+      summary: Delete an empty group (its API keys are deleted with it)
+      security: [{ basicAuth: [] }]
+      responses:
+        "204": { description: Group deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/groups/{groupId}/keys:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [admin]
+      summary: Issue an API key (the plaintext key is returned only here, once)
+      security: [{ basicAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NameRequest" }
+      responses:
+        "201":
+          description: Key issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedApiKey" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+    get:
+      tags: [admin]
+      summary: List a group's API keys (never returns plaintext or hashes)
+      security: [{ basicAuth: [] }]
+      responses:
+        "200":
+          description: Keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApiKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/groups/{groupId}/keys/{keyId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - name: keyId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [admin]
+      summary: Revoke an API key (takes effect immediately; idempotent)
+      security: [{ basicAuth: [] }]
+      responses:
+        "204": { description: Key revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/buckets:
+    post:
+      tags: [buckets]
+      summary: Create a bucket in the key's group
+      description: Bucket names are unique across the whole instance, so a name taken by any group returns 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { $ref: "#/components/schemas/BucketName" }
+                description: { type: string }
+      responses:
+        "201":
+          description: Bucket created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bucket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    get:
+      tags: [buckets]
+      summary: List the group's buckets, sorted by name
+      responses:
+        "200":
+          description: Buckets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [buckets]
+                properties:
+                  buckets:
+                    type: array
+                    items: { $ref: "#/components/schemas/Bucket" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/buckets/{bucket}:
+    parameters:
+      - $ref: "#/components/parameters/Bucket"
+    get:
+      tags: [buckets]
+      summary: Get a bucket
+      responses:
+        "200":
+          description: Bucket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bucket" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [buckets]
+      summary: Delete an empty bucket
+      responses:
+        "204": { description: Bucket deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/buckets/{bucket}/objects:
+    parameters:
+      - $ref: "#/components/parameters/Bucket"
+    get:
+      tags: [objects]
+      summary: List objects with their current version, sorted by key
+      parameters:
+        - name: prefix
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+        - name: cursor
+          in: query
+          description: Opaque `nextCursor` value from the previous page
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of objects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [objects]
+                properties:
+                  objects:
+                    type: array
+                    items: { $ref: "#/components/schemas/Object" }
+                  nextCursor:
+                    type: string
+                    description: Present only when more objects remain
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/buckets/{bucket}/objects/{key}:
+    parameters:
+      - $ref: "#/components/parameters/Bucket"
+      - $ref: "#/components/parameters/ObjectKey"
+    put:
+      tags: [objects]
+      summary: Upload the raw request body as a new version
+      description: |
+        Creates the object if the key is new. Every upload creates a new,
+        immutable version; earlier versions and their read URLs stay valid.
+      requestBody:
+        required: true
+        description: Raw object bytes. `Content-Type` is stored (defaults to `application/octet-stream`).
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+          "*/*":
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Version created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Version" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+    delete:
+      tags: [objects]
+      summary: Delete the object, all its versions and their files
+      responses:
+        "204": { description: Object deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/buckets/{bucket}/versions/{key}:
+    parameters:
+      - $ref: "#/components/parameters/Bucket"
+      - $ref: "#/components/parameters/ObjectKey"
+    get:
+      tags: [objects]
+      summary: List all versions of an object, newest first
+      responses:
+        "200":
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Version" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/objects/{versionId}:
+    parameters:
+      - name: versionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [objects]
+      summary: Read URL — download one version's bytes
+      description: Supports `Range` (206) and `If-None-Match` (304). `HEAD` returns the same headers without a body.
+      responses:
+        "200":
+          description: The version's bytes
+          headers:
+            ETag: { schema: { type: string }, description: Quoted SHA-256 of the content }
+            X-Checksum-Sha256: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, example: "private, max-age=31536000, immutable" } }
+          content:
+            "*/*":
+              schema: { type: string, format: binary }
+        "206": { description: Partial content for a `Range` request }
+        "304": { description: Not modified (`If-None-Match` matched) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    head:
+      tags: [objects]
+      summary: Read URL headers only
+      responses:
+        "200": { description: Same headers as GET, no body }
+        "401": { description: Missing, unknown or revoked API key }
+        "404": { description: Version not found or belongs to another group }
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: ROOT_USERNAME / ROOT_PASSWORD
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: A group API key (`ak_...`)
+
+  parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Bucket:
+      name: bucket
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/BucketName" }
+    ObjectKey:
+      name: key
+      in: path
+      required: true
+      description: |
+        Object key, 1–1024 bytes of UTF-8. May contain `/`; must not start or end
+        with `/`, contain `//`, or contain `.` / `..` segments. Percent-encode
+        special characters.
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found (or belongs to another group)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Already exists, or not empty
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: Body exceeds the size limit
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: bucket_not_found }
+            message: { type: string, example: bucket not found }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, not_ready] }
+        dependencies:
+          type: object
+          properties:
+            postgres: { type: string, enum: [ok, unavailable] }
+            redis: { type: string, enum: [ok, unavailable] }
+            rabbitmq: { type: string, enum: [ok, unavailable] }
+    NameRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+    Group:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, example: ak_AbCdEfGh }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: [string, "null"], format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+    CreatedApiKey:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: Plaintext key. Shown only in this response — store it now.
+    BucketName:
+      type: string
+      pattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+      example: my-bucket
+    Bucket:
+      type: object
+      properties:
+        name: { $ref: "#/components/schemas/BucketName" }
+        description: { type: string }
+        createdAt: { type: string, format: date-time }
+    Version:
+      type: object
+      properties:
+        versionId: { type: string, format: uuid }
+        key: { type: string }
+        size: { type: integer, format: int64 }
+        checksumSha256: { type: string }
+        contentType: { type: string }
+        createdAt: { type: string, format: date-time }
+        readUrl: { type: string, format: uri }
+    Object:
+      type: object
+      properties:
+        key: { type: string }
+        updatedAt: { type: string, format: date-time }
+        currentVersion:
+          oneOf:
+            - $ref: "#/components/schemas/Version"
+            - type: "null"
