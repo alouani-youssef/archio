@@ -110,10 +110,10 @@ All responses are JSON except object downloads. Errors use one shape: `{"error":
 |---|---|
 | `PUT /v1/buckets/{bucket}/objects/{key...}` | Upload the raw request body as a new version. `Content-Type` is stored, and defaults to `application/octet-stream`. Returns `201` with the version: `{versionId, key, size, checksumSha256, contentType, createdAt, readUrl}`. Creates the `Object` if the key is new. |
 | `GET /v1/buckets/{bucket}/objects?prefix=&limit=&cursor=` | List objects with their current version, sorted by key and paginated by cursor. `limit` defaults to 100, with a maximum of 1000. |
-| `GET /v1/buckets/{bucket}/objects/{key...}/versions` | List all versions of the object, newest first, each with its `readUrl`. |
+| `GET /v1/buckets/{bucket}/versions/{key...}` | List all versions of the object, newest first, each with its `readUrl`. |
 | `DELETE /v1/buckets/{bucket}/objects/{key...}` | Delete the object and all its versions, including their files. |
 
-Object keys that contain `/` use Go 1.22+ `{key...}` wildcard routing. Because a key can end in `/versions`, the versions listing route must be unambiguous. *(Builder's call how, for example a `?versions` query or a separate path prefix. Document the choice.)*
+Object keys that contain `/` use Go 1.22+ `{key...}` wildcard routing. The versions listing lives under its own `/versions/` prefix, so a key that ends in `/versions` stays unambiguous.
 
 ### Read URL (API key)
 
@@ -205,7 +205,6 @@ Follow the existing module pattern (`internal/modules/<name>/` with controller, 
 
 ## Left to the builder
 
-- The exact routing used to keep `/versions` unambiguous with `{key...}` keys.
 - The mechanism for extending deadlines on streaming handlers.
 - How `last_used_at` is throttled.
 - The cursor encoding for object listing.
