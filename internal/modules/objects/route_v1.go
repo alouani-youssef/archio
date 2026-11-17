@@ -29,4 +29,5 @@ func RegisterRoutes(mux *http.ServeMux, d Deps, keyAuth func(http.Handler) http.
 	route("GET /v1/buckets/{bucket}/objects", c.list)
 	route("GET /v1/buckets/{bucket}/versions/{key...}", c.versions)
 	route("DELETE /v1/buckets/{bucket}/objects/{key...}", c.delete)
+	route("GET /v1/objects/{versionId}", c.read)
 }
