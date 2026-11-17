@@ -5,6 +5,7 @@ go 1.25.6
 require (
 	entgo.io/ent v0.14.6
 	github.com/arl/statsviz v0.8.0
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pgvector/pgvector-go v0.4.1
@@ -24,7 +25,6 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
