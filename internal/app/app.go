@@ -11,18 +11,24 @@ import (
 	"archio/internal/config"
 	"archio/internal/database"
 	"archio/internal/events"
+	"archio/internal/middlewares"
+	"archio/internal/modules/admin"
+	"archio/internal/modules/buckets"
 	"archio/internal/modules/health"
+	"archio/internal/modules/objects"
 	"archio/internal/server"
+	"archio/internal/storage"
 	"github.com/arl/statsviz"
 )
 
 // App owns the infrastructure and transport lifecycles for one API process.
 type App struct {
-	database *database.Connection
-	cache    *cache.Connection
-	broker   *events.Broker
-	handler  http.Handler
-	settings server.Settings
+	database  *database.Connection
+	cache     *cache.Connection
+	broker    *events.Broker
+	publisher *events.AMQPPublisher
+	handler   http.Handler
+	settings  server.Settings
 }
 
 // New opens PostgreSQL, applies the Ent schema, and wires feature handlers.
@@ -51,20 +57,53 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("initialize database schema: %w", err)
 	}
 
+	blobs, err := storage.NewLocal(cfg.Storage.Path)
+	if err != nil {
+		_ = broker.Close()
+		_ = cacheConnection.Close()
+		_ = connection.Close()
+		return nil, fmt.Errorf("initialize object storage: %w", err)
+	}
+
+	publisher, err := events.NewPublisher(broker)
+	if err != nil {
+		_ = broker.Close()
+		_ = cacheConnection.Close()
+		_ = connection.Close()
+		return nil, fmt.Errorf("initialize event publisher: %w", err)
+	}
+
+	client := connection.Client()
+	basicAuth := middlewares.BasicAuth(cfg.Auth.RootUsername, cfg.Auth.RootPassword)
+	keyAuth := middlewares.APIKeyAuth(admin.NewKeyAuthenticator(client))
+
 	mux := server.NewMux(health.NewHandler(health.Dependencies{
 		Postgres: connection,
 		Redis:    cacheConnection,
 		RabbitMQ: broker,
-	}))
+	}),
+		func(m *http.ServeMux) { admin.RegisterRoutes(m, client, basicAuth) },
+		func(m *http.ServeMux) { buckets.RegisterRoutes(m, client, keyAuth) },
+		func(m *http.ServeMux) {
+			objects.RegisterRoutes(m, objects.Deps{
+				Client:         client,
+				Storage:        blobs,
+				Publisher:      publisher,
+				PublicBaseURL:  cfg.Storage.PublicBaseURL,
+				MaxUploadBytes: cfg.Storage.MaxUploadBytes,
+			}, keyAuth)
+		},
+	)
 	if cfg.App.IsDev {
 		statsviz.Register(mux)
 	}
 
 	return &App{
-		database: connection,
-		cache:    cacheConnection,
-		broker:   broker,
-		handler:  mux,
+		database:  connection,
+		cache:     cacheConnection,
+		broker:    broker,
+		publisher: publisher,
+		handler:   mux,
 		settings: server.Settings{
 			Host:              cfg.App.Host,
 			Port:              cfg.App.Port,
@@ -82,6 +121,9 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}, nil
 }
 
+// Handler returns the HTTP handler serving every route.
+func (a *App) Handler() http.Handler { return a.handler }
+
 // Run serves HTTP until the context is canceled or the process receives a stop signal.
 func (a *App) Run(ctx context.Context) error {
 	return server.Run(ctx, a.handler, a.settings)
@@ -92,5 +134,5 @@ func (a *App) Close() error {
 	if a == nil {
 		return nil
 	}
-	return errors.Join(a.broker.Close(), a.cache.Close(), a.database.Close())
+	return errors.Join(a.publisher.Close(), a.broker.Close(), a.cache.Close(), a.database.Close())
 }

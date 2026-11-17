@@ -50,7 +50,45 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: ${DB_USERNAME:-archio_user}
+      DB_PASSWORD: ${DB_PASSWORD:-archio_local_password}
+      DB_DATABASE: ${DB_DATABASE:-archio}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_local_password}
+      BROKER_HOST: rabbitmq
+      BROKER_PORT: "5672"
+      BROKER_USERNAME: ${BROKER_USERNAME:-archio}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-rabbitmq_local_password}
+      STORAGE_PATH: /data/objects
+      PUBLIC_BASE_URL: http://127.0.0.1:${APP_PORT:-3000}
+      ROOT_USERNAME: ${ROOT_USERNAME:-}
+      ROOT_PASSWORD: ${ROOT_PASSWORD:-}
+    volumes:
+      - object_data:/data/objects
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
+  object_data:
   postgres_data:
   redis_data:
   rabbitmq_data:

@@ -25,6 +25,9 @@ WORKDIR /app
 # Copy the pre-built binary file from the previous stage
 COPY --from=builder /app/archio-api .
 
+# Object storage volume mount point
+RUN mkdir -p /data/objects && chmod 0777 /data/objects
+
 # Expose the application port
 EXPOSE 3000
 
