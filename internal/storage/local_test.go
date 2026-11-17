@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,4 +162,15 @@ func TestNewLocal_UnwritableRoot(t *testing.T) {
 	if _, err := NewLocal(filepath.Join(parent, "root")); err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestLocal_PutMaxBytesError(t *testing.T) {
+	l, root := newTestLocal(t)
+	r := http.MaxBytesReader(nil, io.NopCloser(strings.NewReader("hello world")), 4)
+	_, _, err := l.Put(context.Background(), "g/1/v", r)
+	var mbe *http.MaxBytesError
+	if !errors.As(err, &mbe) {
+		t.Fatalf("err = %v, want *http.MaxBytesError", err)
+	}
+	assertTmpEmpty(t, root)
 }

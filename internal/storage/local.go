@@ -104,15 +104,34 @@ func (l *Local) Put(ctx context.Context, storageKey string, r io.Reader) (size i
 		return 0, "", fmt.Errorf("storage: close: %w", err)
 	}
 	dir := filepath.Dir(dst)
+	// Record which directories MkdirAll will create so their parents can be synced.
+	var created []string
+	for d := dir; d != l.root && d != filepath.Dir(d); d = filepath.Dir(d) {
+		if _, serr := os.Stat(d); serr == nil {
+			break
+		}
+		created = append(created, d)
+	}
 	if err = os.MkdirAll(dir, 0o750); err != nil {
 		return 0, "", fmt.Errorf("storage: mkdir: %w", err)
 	}
 	if err = os.Rename(tmpName, dst); err != nil {
 		return 0, "", fmt.Errorf("storage: rename: %w", err)
 	}
-	if d, derr := os.Open(dir); derr == nil {
-		d.Sync()
-		d.Close()
+	// Make the rename and any newly created directory entries durable.
+	toSync := []string{dir}
+	for _, c := range created {
+		toSync = append(toSync, filepath.Dir(c))
+	}
+	seen := map[string]bool{}
+	for _, d := range toSync {
+		if seen[d] {
+			continue
+		}
+		seen[d] = true
+		if err = syncDir(d); err != nil {
+			return 0, "", err
+		}
 	}
 	return size, hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -141,6 +160,21 @@ func (l *Local) Delete(_ context.Context, storageKey string) error {
 	}
 	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("storage: delete: %w", err)
+	}
+	return nil
+}
+
+func syncDir(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("storage: open dir for sync: %w", err)
+	}
+	if err := d.Sync(); err != nil {
+		d.Close()
+		return fmt.Errorf("storage: sync dir: %w", err)
+	}
+	if err := d.Close(); err != nil {
+		return fmt.Errorf("storage: close dir: %w", err)
 	}
 	return nil
 }
