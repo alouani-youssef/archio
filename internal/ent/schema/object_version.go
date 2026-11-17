@@ -18,17 +18,17 @@ type ObjectVersion struct {
 func (ObjectVersion) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
-		field.Int64("size").NonNegative(),
-		field.String("checksum_sha256").NotEmpty(),
-		field.String("content_type").NotEmpty(),
-		field.String("storage_key").NotEmpty(),
+		field.Int64("size").NonNegative().Immutable(),
+		field.String("checksum_sha256").NotEmpty().Immutable(),
+		field.String("content_type").NotEmpty().Immutable(),
+		field.String("storage_key").NotEmpty().Immutable(),
 		field.Time("created_at").Default(time.Now).Immutable(),
 	}
 }
 
 func (ObjectVersion) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("object", Object.Type).Ref("versions").Unique().Required(),
+		edge.From("object", Object.Type).Ref("versions").Unique().Required().Immutable(),
 	}
 }
 
