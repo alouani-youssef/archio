@@ -180,16 +180,13 @@ func TestApp_EndToEnd(t *testing.T) {
 		}
 		return u.Path
 	}
+	// Read URLs are public: no key, the owner's key and another group's key all read the bytes.
 	for i, want := range []string{"v1", "v2"} {
-		status, body := c.do("GET", pathOf(readURLs[i]), "", "", keyA, "", nil)
-		if status != http.StatusOK || string(body) != want {
-			t.Fatalf("read version %d: status %d body %q, want %q", i+1, status, body, want)
-		}
-		if status, _ := c.do("GET", pathOf(readURLs[i]), "", "", "", "", nil); status != http.StatusUnauthorized {
-			t.Fatalf("read without key: status %d, want 401", status)
-		}
-		if status, _ := c.do("GET", pathOf(readURLs[i]), "", "", keyB, "", nil); status != http.StatusNotFound {
-			t.Fatalf("read with other group's key: status %d, want 404", status)
+		for _, key := range []string{"", keyA, keyB} {
+			status, body := c.do("GET", pathOf(readURLs[i]), "", "", key, "", nil)
+			if status != http.StatusOK || string(body) != want {
+				t.Fatalf("read version %d (key %q): status %d body %q, want %q", i+1, key, status, body, want)
+			}
 		}
 	}
 
@@ -205,7 +202,7 @@ func TestApp_EndToEnd(t *testing.T) {
 		t.Fatalf("admin with bearer key: %d, want 401", status)
 	}
 
-	// Revoking keyA cuts off both reads and API calls.
+	// Revoking keyA cuts off API calls; read URLs stay public.
 	status, groups := c.admin("GET", adminPath, nil)
 	if status != http.StatusOK {
 		t.Fatalf("list groups: %d", status)
@@ -227,8 +224,8 @@ func TestApp_EndToEnd(t *testing.T) {
 	if !revoked {
 		t.Fatal("keyA not found among listed keys")
 	}
-	if status, _ := c.do("GET", pathOf(readURLs[0]), "", "", keyA, "", nil); status != http.StatusUnauthorized {
-		t.Fatalf("read with revoked key: %d, want 401", status)
+	if status, _ := c.do("GET", pathOf(readURLs[0]), "", "", "", "", nil); status != http.StatusOK {
+		t.Fatalf("public read after revocation: %d, want 200", status)
 	}
 	if status, _ := c.do("GET", "/v1/buckets", "", "", keyA, "", nil); status != http.StatusUnauthorized {
 		t.Fatalf("list buckets with revoked key: %d, want 401", status)

@@ -13,7 +13,7 @@ This is the storage foundation for Archio's later schema.org metadata and search
 - Bucket create, list, get and delete within a group.
 - Object upload, where each upload creates a new immutable version that records its size, checksum, content type and storage location.
 - Object listing, version listing and object deletion.
-- One authenticated read URL per object version.
+- One public read URL per object version.
 - File bytes stored on a disk volume behind a storage interface, with a local-disk implementation.
 - An `object.version.created` event published to RabbitMQ after each successful upload.
 
@@ -21,7 +21,7 @@ This is the storage foundation for Archio's later schema.org metadata and search
 
 - S3 protocol compatibility (SigV4, XML responses, S3 SDK/`mc` support). Archio exposes its own JSON REST API. S3 compatibility may come later.
 - A web console or any visual interface.
-- Public or anonymous read URLs, and presigned or expiring URLs.
+- Presigned or expiring URLs, and per-version access control on read URLs.
 - Multipart/chunked uploads, resumable uploads, or range requests on upload.
 - Content deduplication.
 - Consumers of the `object.version.created` event, which belong to the later metadata and search work.
@@ -33,7 +33,7 @@ This is the storage foundation for Archio's later schema.org metadata and search
 
 - A version's bytes must never change after its read URL is issued. Re-uploading creates a new version and never overwrites an earlier one.
 - The database must never point to a version whose bytes are missing or incomplete.
-- A key from one group must never be able to read, list or detect objects, versions or buckets of another group.
+- A key from one group must never be able to list, modify or detect objects, versions or buckets of another group through the key-protected API. (Read URLs are public by design.)
 - Plaintext API keys must never be stored or logged.
 
 ## Approaches
@@ -49,7 +49,7 @@ The user chose approach 1.
 - Own JSON REST API, not S3-compatible.
 - Objects have versions, and each version has its size, checksum, content type and storage location.
 - The bytes live on a disk volume added to Docker Compose.
-- Read URLs require authentication.
+- Read URLs are public (changed 2026-11-17 at the user's request; originally they required an API key). Anyone holding a read URL can download that version; version IDs are random UUIDs, so URLs can't be guessed.
 - API keys are issued per **group of buckets**. A key unlocks every bucket in its group.
 - Admin endpoints (groups and API keys) are protected by `ROOT_USERNAME` / `ROOT_PASSWORD` over HTTP Basic auth.
 - `ARCHIO_ROOT_KEY` is dropped. There's no bypass key.
@@ -115,14 +115,14 @@ All responses are JSON except object downloads. Errors use one shape: `{"error":
 
 Object keys that contain `/` use Go 1.22+ `{key...}` wildcard routing. The versions listing lives under its own `/versions/` prefix, so a key that ends in `/versions` stays unambiguous.
 
-### Read URL (API key)
+### Read URL (public)
 
 | Method & path | Behavior |
 |---|---|
-| `GET /v1/objects/{versionId}` | Streams the version's bytes. The version must belong to a bucket in the key's group, otherwise `404`. |
+| `GET /v1/objects/{versionId}` | Streams the version's bytes. No credentials; an unknown or malformed version ID returns `404`. |
 | `HEAD /v1/objects/{versionId}` | The same headers, without the body. |
 
-Response headers: `Content-Type`, `Content-Length`, `ETag: "<sha256>"`, `Cache-Control: private, max-age=31536000, immutable`, `X-Checksum-Sha256`. `If-None-Match` returns `304`. Range requests (`Range` header) should be supported by serving the file through `http.ServeContent`.
+Response headers: `Content-Type`, `Content-Length`, `ETag: "<sha256>"`, `Cache-Control: public, max-age=31536000, immutable`, `X-Checksum-Sha256`. `If-None-Match` returns `304`. Range requests (`Range` header) should be supported by serving the file through `http.ServeContent`.
 
 `readUrl` in responses is an absolute URL built from a new `PUBLIC_BASE_URL` setting, for example `http://127.0.0.1:3000`. It defaults to `http://APP_HOST:APP_PORT`, or `https` when TLS is enabled.
 
@@ -193,7 +193,7 @@ Follow the existing module pattern (`internal/modules/<name>/` with controller, 
 ## Testing
 
 - Unit tests: name and key validation, key generation and hashing, and the local storage `Put`/`Open`/`Delete`, including temp-file cleanup on failure and on exceeding the size limit.
-- Integration tests against the Compose Postgres: group isolation (a key from group A gets `404` on group B's bucket, objects and read URLs), revoked keys get `401`, re-uploads create new versions while old read URLs still return the old bytes, concurrent uploads to one key, and the delete flows.
+- Integration tests against the Compose Postgres: group isolation (a key from group A gets `404` on group B's bucket and objects), revoked keys get `401`, read URLs work without credentials, re-uploads create new versions while old read URLs still return the old bytes, concurrent uploads to one key, and the delete flows.
 
 ## Settled after review (designer's calls)
 
@@ -214,6 +214,6 @@ Follow the existing module pattern (`internal/modules/<name>/` with controller, 
 
 - An admin can create a group and issue a key using only the root credentials.
 - With that key, a client can create a bucket, upload an object twice, list both versions, and download each version through its own read URL with the matching bytes and checksum.
-- A key from another group, a revoked key, or no key cannot read any of it.
+- A key from another group, a revoked key, or no key cannot list, upload or delete any of it; read URLs work for anyone who holds them.
 - `docker compose up` runs the API with object bytes persisted in the `object_data` volume.
 - `/health` keeps working. `go test ./...` passes.

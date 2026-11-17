@@ -5,11 +5,12 @@ info:
   description: |
     API-only object storage inspired by MinIO. Buckets belong to groups; each
     group has API keys. Every upload creates an immutable version with exactly
-    one authenticated read URL.
+    one public read URL.
 
     - Admin endpoints (`/v1/admin/...`) use HTTP Basic auth with `ROOT_USERNAME` / `ROOT_PASSWORD`.
     - All other `/v1` endpoints use `Authorization: Bearer <api-key>`.
     - Anything that belongs to another group answers `404`, never `403`.
+    - Read URLs (`/v1/objects/{versionId}`) are public: no credentials needed.
 servers:
   - url: /
 tags:
@@ -312,29 +313,32 @@ paths:
         schema: { type: string, format: uuid }
     get:
       tags: [objects]
-      summary: Read URL — download one version's bytes
-      description: Supports `Range` (206) and `If-None-Match` (304). `HEAD` returns the same headers without a body.
+      summary: Read URL — download one version's bytes (public)
+      description: |
+        No credentials needed: anyone holding the URL can download the version.
+        Version IDs are random UUIDs. Supports `Range` (206) and `If-None-Match`
+        (304). `HEAD` returns the same headers without a body.
+      security: []
       responses:
         "200":
           description: The version's bytes
           headers:
             ETag: { schema: { type: string }, description: Quoted SHA-256 of the content }
             X-Checksum-Sha256: { schema: { type: string } }
-            Cache-Control: { schema: { type: string, example: "private, max-age=31536000, immutable" } }
+            Cache-Control: { schema: { type: string, example: "public, max-age=31536000, immutable" } }
           content:
             "*/*":
               schema: { type: string, format: binary }
         "206": { description: Partial content for a `Range` request }
         "304": { description: Not modified (`If-None-Match` matched) }
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     head:
       tags: [objects]
-      summary: Read URL headers only
+      summary: Read URL headers only (public)
+      security: []
       responses:
         "200": { description: Same headers as GET, no body }
-        "401": { description: Missing, unknown or revoked API key }
-        "404": { description: Version not found or belongs to another group }
+        "404": { description: Version not found }
 
 security:
   - bearerAuth: []

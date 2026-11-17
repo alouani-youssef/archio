@@ -11,13 +11,15 @@ import (
 	"strings"
 	"testing"
 
+	"archio/internal/ent"
 	"archio/internal/ent/objectversion"
 	"archio/internal/storage"
 	"github.com/google/uuid"
 )
 
+// read calls the public read URL without any credentials.
 func (e *env) read(method, versionID string, header http.Header) *httptest.ResponseRecorder {
-	return e.request(e.a, method, "/v1/objects/"+versionID, nil, header)
+	return e.request(nil, method, "/v1/objects/"+versionID, nil, header)
 }
 
 func assertReadHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -27,7 +29,7 @@ func assertReadHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
 		"Content-Length":         "5",
 		"Etag":                   `"` + helloSHA + `"`,
 		"X-Checksum-Sha256":      helloSHA,
-		"Cache-Control":          "private, max-age=31536000, immutable",
+		"Cache-Control":          "public, max-age=31536000, immutable",
 		"X-Content-Type-Options": "nosniff",
 	}
 	for k, v := range want {
@@ -85,12 +87,15 @@ func TestRead_Range(t *testing.T) {
 	}
 }
 
-func TestRead_OtherGroupIs404(t *testing.T) {
+func TestRead_IsPublic(t *testing.T) {
 	e := setup(t)
 	v := mustPut(t, e, "hello.txt", "hello", "text/plain")
-	rec := e.request(e.b, "GET", "/v1/objects/"+v.VersionID, nil, nil)
-	if rec.Code != 404 || errCode(t, rec) != "version_not_found" {
-		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	// No credentials at all, and credentials from another group, both read the bytes.
+	for _, g := range []*ent.Group{nil, e.b} {
+		rec := e.request(g, "GET", "/v1/objects/"+v.VersionID, nil, nil)
+		if rec.Code != 200 || rec.Body.String() != "hello" {
+			t.Fatalf("group %v: got %d %q", g, rec.Code, rec.Body)
+		}
 	}
 }
 

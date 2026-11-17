@@ -4,7 +4,7 @@
 
 # Archio
 
-Archio is a Go-based HTTP server that stores objects in buckets through a JSON REST API. It has no visual interface and is not S3-compatible. Every upload creates a new immutable version, and every version has exactly one authenticated read URL.
+Archio is a Go-based HTTP server that stores objects in buckets through a JSON REST API. It has no visual interface and is not S3-compatible. Every upload creates a new immutable version, and every version has exactly one public read URL.
 
 ## Prerequisites
 
@@ -79,7 +79,7 @@ The Compose `api` service sets `STORAGE_PATH=/data/objects`, `PUBLIC_BASE_URL` a
 
 All responses are JSON except object downloads. Errors look like `{"error": {"code": "bucket_not_found", "message": "..."}}`.
 
-Admin endpoints use HTTP Basic auth with the root credentials. Every other `/v1` endpoint uses `Authorization: Bearer <api-key>`. A key belongs to one group and can reach only that group's buckets. Anything in another group returns `404`.
+Admin endpoints use HTTP Basic auth with the root credentials. Every other `/v1` endpoint uses `Authorization: Bearer <api-key>`. A key belongs to one group and can reach only that group's buckets. Anything in another group returns `404`. The only exception is the read URL `GET /v1/objects/{versionId}`, which is public: anyone holding the URL can download that version, so share read URLs only with people who should have the content.
 
 | Method and path | Auth | Description |
 |---|---|---|
@@ -97,7 +97,7 @@ Admin endpoints use HTTP Basic auth with the root credentials. Every other `/v1`
 | `GET /v1/buckets/{bucket}/objects?prefix=&limit=&cursor=` | Key | List objects with their current version. |
 | `GET /v1/buckets/{bucket}/versions/{key...}` | Key | List all versions of an object, newest first. |
 | `DELETE /v1/buckets/{bucket}/objects/{key...}` | Key | Delete the object and all its versions. |
-| `GET`/`HEAD /v1/objects/{versionId}` | Key | Download one version. Supports `Range` and `If-None-Match`. |
+| `GET`/`HEAD /v1/objects/{versionId}` | Public | Download one version. No key needed. Supports `Range` and `If-None-Match`. |
 
 After each upload, Archio publishes `object.version.created` on the durable topic exchange `archio.events`.
 
@@ -117,9 +117,9 @@ curl -s -H "Authorization: Bearer $KEY" -X POST http://127.0.0.1:3000/v1/buckets
 curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: text/plain' -X PUT --data-binary 'v1' http://127.0.0.1:3000/v1/buckets/my-bucket/objects/doc.txt
 curl -s -H "Authorization: Bearer $KEY" -H 'Content-Type: text/plain' -X PUT --data-binary 'v2' http://127.0.0.1:3000/v1/buckets/my-bucket/objects/doc.txt
 
-# List versions, then download one through its readUrl
+# List versions, then download one through its public readUrl (no key needed)
 curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:3000/v1/buckets/my-bucket/versions/doc.txt
-curl -s -H "Authorization: Bearer $KEY" <readUrl>
+curl -s <readUrl>
 ```
 
 ## Building from Source
