@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/photos/logo.jpeg" alt="Archio logo" width="200">
+</p>
+
 # Archio
 
 Archio is a Go-based HTTP server that stores objects in buckets through a JSON REST API. It has no visual interface and is not S3-compatible. Every upload creates a new immutable version, and every version has exactly one authenticated read URL.
